@@ -56,28 +56,106 @@ else:
     st.sidebar.markdown("---")
     page = st.sidebar.radio("ARCHIVE SECTIONS", ["Dashboard", "New Entry", "History"])
 
-    # --- SECTION: DASHBOARD ---
+# --- SECTION: DASHBOARD ---
     if page == "Dashboard":
         st.title("CLEANUP ANALYTICS")
+
+        # --- SIDEBAR FILTERS ---
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("ARCHIVE FILTERS")
         
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("TOTAL EXPEDITIONS", len(df))
-        with col2:
-            total_p = int(df[ALL_DEBRIS_ITEMS].sum().sum())
-            st.metric("TOTAL DEBRIS PIECES", f"{total_p:,}")
+        filter_df = df.copy()
+        # On-the-fly date processing for filtering
+        filter_df['Date_Converted'] = pd.to_datetime(filter_df['Date'], errors='coerce')
+        filter_df['Year_Val'] = filter_df['Date_Converted'].dt.year.fillna("Unknown")
+
+        # 1. Year Filter
+        years = sorted(filter_df['Year_Val'].unique(), reverse=True)
+        sel_year = st.sidebar.multiselect("SELECT YEAR(S)", options=years, default=years)
+
+        # 2. State Filter (Replacing Location)
+        states = sorted([str(x) for x in filter_df['State'].unique() if pd.notna(x)])
+        sel_state = st.sidebar.multiselect("SELECT STATE(S)", options=states)
+
+        # Apply logic
+        mask = filter_df['Year_Val'].isin(sel_year)
+        if sel_state:
+            mask = mask & filter_df['State'].isin(sel_state)
+        view_df = filter_df[mask]
+
+        # --- KEY METRICS ---
+        m1, m2, m3 = st.columns(3)
+        total_p = int(view_df[ALL_DEBRIS_ITEMS].sum().sum())
+        m1.metric("EXPEDITIONS", len(view_df))
+        m2.metric("TOTAL PIECES", f"{total_p:,}")
+        m3.metric("AVG PER CLEANUP", int(total_p / len(view_df)) if len(view_df) > 0 else 0)
 
         st.markdown("---")
-        st.subheader("DISTRIBUTION BY CATEGORY")
-        cat_sums = {cat: df[items].sum().sum() for cat, items in DEBRIS_GROUPS.items()}
-        cat_df = pd.DataFrame(list(cat_sums.items()), columns=['Category', 'Count']).sort_values(by='Count', ascending=False)
+
+        # --- SECTION 1: TOTAL PIECES FOUND (SORTABLE) ---
+        st.subheader("TOTAL PIECES FOUND BY ITEM")
         
-        # Ocean-toned Bar Chart
-        fig = px.bar(cat_df, x='Category', y='Count', 
-                     template="simple_white",
-                     color_discrete_sequence=['#004d4d'])
-        fig.update_layout(font_family="Courier New", plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig, use_container_width=True)
+        item_counts = view_df[ALL_DEBRIS_ITEMS].sum().reset_index()
+        item_counts.columns = ['Item', 'Count']
+
+        sort_order = st.radio("SORT BY:", ["Frequency (Highest First)", "Item Name (A-Z)"], horizontal=True)
+        
+        if "Frequency" in sort_order:
+            item_counts = item_counts.sort_values(by='Count', ascending=False)
+        else:
+            item_counts = item_counts.sort_values(by='Item')
+
+        fig_items = px.bar(item_counts, x='Item', y='Count',
+                           template="simple_white",
+                           color_discrete_sequence=['#004d4d'])
+        fig_items.update_layout(font_family="Courier New", height=500, plot_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig_items, use_container_width=True)
+
+        st.markdown("---")
+
+        # --- SECTION 2: MATERIAL BREAKDOWNS ---
+        st.subheader("MATERIAL COMPOSITION")
+        
+        # 1. High-Level Overview Pie
+        cat_sums = {cat: view_df[items].sum().sum() for cat, items in DEBRIS_GROUPS.items()}
+        overall_pie_df = pd.DataFrame(list(cat_sums.items()), columns=['Category', 'Count'])
+        
+        fig_overall = px.pie(overall_pie_df, values='Count', names='Category', 
+                             title="OVERALL CATEGORY DISTRIBUTION",
+                             hole=0.4,
+                             color_discrete_sequence=px.colors.sequential.Tealgrn)
+        fig_overall.update_layout(font_family="Courier New")
+        st.plotly_chart(fig_overall, use_container_width=True)
+
+        st.markdown("---")
+        st.subheader("DETAILED CATEGORY BREAKDOWNS")
+        
+        # 2. Automated Loop for All Categories
+        # This creates a 2-column grid and makes a pie chart for every group in your config
+        group_names = list(DEBRIS_GROUPS.keys())
+        for i in range(0, len(group_names), 2):
+            cols = st.columns(2)
+            for j in range(2):
+                if i + j < len(group_names):
+                    cat_name = group_names[i + j]
+                    items = DEBRIS_GROUPS[cat_name]
+                    
+                    sub_df = view_df[items].sum().reset_index()
+                    sub_df.columns = ['Item', 'Count']
+                    
+                    # Only show the chart if there is actually data for this category
+                    if sub_df['Count'].sum() > 0:
+                        fig_sub = px.pie(sub_df, values='Count', names='Item', 
+                                         title=f"{cat_name.upper()} DETAIL",
+                                         hole=0.3,
+                                         color_discrete_sequence=px.colors.sequential.Mint if j==0 else px.colors.sequential.Teal)
+                        fig_sub.update_layout(font_family="Courier New")
+                        cols[j].plotly_chart(fig_sub, use_container_width=True)
+                    else:
+                        cols[j].info(f"No data recorded for {cat_name} in the selected filters.")
+
+
+
 
     # --- SECTION: NEW ENTRY ---
     elif page == "New Entry":

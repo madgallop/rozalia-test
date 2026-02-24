@@ -60,102 +60,152 @@ else:
     if page == "Dashboard":
         st.title("CLEANUP ANALYTICS")
 
-        # --- SIDEBAR FILTERS ---
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("ARCHIVE FILTERS")
+        # --- STEP 1: CASCADING FILTERS (Slicers) ---
+        st.sidebar.markdown("### STEP 1: FILTER DATA")
+        st.sidebar.caption("Optional: Hold Ctrl to select multiple. Filters are linked.")
+
+        # Data processing for filtering
+        f_df = df.copy()
+        f_df['Date_Converted'] = pd.to_datetime(f_df['Date'], errors='coerce')
+        f_df['Year'] = f_df['Date_Converted'].dt.year.fillna("Unknown").astype(str)
+        f_df['Month'] = f_df['Date_Converted'].dt.strftime('%B').fillna("Unknown")
+
+        # Define all available filter dimensions
+        filter_cols = {
+            "Year": "Year",
+            "Month": "Month",
+            "State": "State",
+            "City": "City",
+            "Type of cleanup": "Type of cleanup",
+            "Type of location": "Type of location",
+            "Recent events": "Recent events (human)",
+            "Weather": "Weather",
+            "Tide": "State of Tide",
+            "Flow": "Flow",
+            "Recent weather": "Recent weather"
+        }
+
+        active_filters = {}
+        for label, col in filter_cols.items():
+            if col in f_df.columns:
+                available_options = sorted(f_df[col].unique().astype(str))
+                selected = st.sidebar.multiselect(f"SELECT {label.upper()}", options=available_options)
+                if selected:
+                    f_df = f_df[f_df[col].astype(str).isin(selected)]
+                    active_filters[col] = selected
+
+        # --- STEP 2: GROUPING SELECTION ---
+        st.markdown("### STEP 2: SELECT VIEW DIMENSIONS")
+        st.caption("How would you like to group the charts? (e.g., View by Year and State)")
         
-        filter_df = df.copy()
-        # On-the-fly date processing for filtering
-        filter_df['Date_Converted'] = pd.to_datetime(filter_df['Date'], errors='coerce')
-        filter_df['Year_Val'] = filter_df['Date_Converted'].dt.year.fillna("Unknown")
+        group_options = ["Year", "State", "Type of cleanup", "Type of location", "Weather"]
+        selected_groups = st.multiselect("GROUP DATA BY:", options=group_options, default=["Year"])
 
-        # 1. Year Filter
-        years = sorted(filter_df['Year_Val'].unique(), reverse=True)
-        sel_year = st.sidebar.multiselect("SELECT YEAR(S)", options=years, default=years)
+        # Display Data Point Count
+        st.info(f"**DATA POINTS SELECTED:** {len(f_df)} records match your filters.")
 
-        # 2. State Filter (Replacing Location)
-        states = sorted([str(x) for x in filter_df['State'].unique() if pd.notna(x)])
-        sel_state = st.sidebar.multiselect("SELECT STATE(S)", options=states)
-
-        # Apply logic
-        mask = filter_df['Year_Val'].isin(sel_year)
-        if sel_state:
-            mask = mask & filter_df['State'].isin(sel_state)
-        view_df = filter_df[mask]
-
-        # --- KEY METRICS ---
-        m1, m2, m3 = st.columns(3)
-        total_p = int(view_df[ALL_DEBRIS_ITEMS].sum().sum())
-        m1.metric("EXPEDITIONS", len(view_df))
-        m2.metric("TOTAL PIECES", f"{total_p:,}")
-        m3.metric("AVG PER CLEANUP", int(total_p / len(view_df)) if len(view_df) > 0 else 0)
-
-        st.markdown("---")
-
-        # --- SECTION 1: TOTAL PIECES FOUND (SORTABLE) ---
-        st.subheader("TOTAL PIECES FOUND BY ITEM")
-        
-        item_counts = view_df[ALL_DEBRIS_ITEMS].sum().reset_index()
-        item_counts.columns = ['Item', 'Count']
-
-        sort_order = st.radio("SORT BY:", ["Frequency (Highest First)", "Item Name (A-Z)"], horizontal=True)
-        
-        if "Frequency" in sort_order:
-            item_counts = item_counts.sort_values(by='Count', ascending=False)
+        if f_df.empty or not selected_groups:
+            st.warning("No data matches the selected filters or no Grouping selected.")
         else:
-            item_counts = item_counts.sort_values(by='Item')
+            # --- METRICS ---
+            m1, m2, m3 = st.columns(3)
+            total_p = int(f_df[ALL_DEBRIS_ITEMS].sum().sum())
+            m1.metric("EXPEDITIONS", len(f_df))
+            m2.metric("TOTAL PIECES", f"{total_p:,}")
+            m3.metric("AVG PIECES", int(total_p / len(f_df)) if len(f_df) > 0 else 0)
 
-        fig_items = px.bar(item_counts, x='Item', y='Count',
-                           template="simple_white",
-                           color_discrete_sequence=['#004d4d'])
-        fig_items.update_layout(font_family="Courier New", height=500, plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_items, use_container_width=True)
+            # --- TABS ---
+            tab_main, tab_sub = st.tabs(["TOTAL COLLECTIONS", "SUBCATEGORY DRILL-DOWN"])
 
-        st.markdown("---")
+        with tab_main:
+            st.subheader("PROPORTIONAL MATERIAL TYPE (0–100%)")
 
-        # --- SECTION 2: MATERIAL BREAKDOWNS ---
-        st.subheader("MATERIAL COMPOSITION")
-        
-        # 1. High-Level Overview Pie
-        cat_sums = {cat: view_df[items].sum().sum() for cat, items in DEBRIS_GROUPS.items()}
-        overall_pie_df = pd.DataFrame(list(cat_sums.items()), columns=['Category', 'Count'])
-        
-        fig_overall = px.pie(overall_pie_df, values='Count', names='Category', 
-                             title="OVERALL CATEGORY DISTRIBUTION",
-                             hole=0.4,
-                             color_discrete_sequence=px.colors.sequential.Tealgrn)
-        fig_overall.update_layout(font_family="Courier New")
-        st.plotly_chart(fig_overall, use_container_width=True)
+            summary_data = []
 
-        st.markdown("---")
-        st.subheader("DETAILED CATEGORY BREAKDOWNS")
-        
-        # 2. Automated Loop for All Categories
-        # This creates a 2-column grid and makes a pie chart for every group in your config
-        group_names = list(DEBRIS_GROUPS.keys())
-        for i in range(0, len(group_names), 2):
-            cols = st.columns(2)
-            for j in range(2):
-                if i + j < len(group_names):
-                    cat_name = group_names[i + j]
-                    items = DEBRIS_GROUPS[cat_name]
-                    
-                    sub_df = view_df[items].sum().reset_index()
-                    sub_df.columns = ['Item', 'Count']
-                    
-                    # Only show the chart if there is actually data for this category
-                    if sub_df['Count'].sum() > 0:
-                        fig_sub = px.pie(sub_df, values='Count', names='Item', 
-                                         title=f"{cat_name.upper()} DETAIL",
-                                         hole=0.3,
-                                         color_discrete_sequence=px.colors.sequential.Mint if j==0 else px.colors.sequential.Teal)
-                        fig_sub.update_layout(font_family="Courier New")
-                        cols[j].plotly_chart(fig_sub, use_container_width=True)
-                    else:
-                        cols[j].info(f"No data recorded for {cat_name} in the selected filters.")
+            for cat, items in DEBRIS_GROUPS.items():
+                # Sum all columns belonging to this category
+                cat_total = (
+                    f_df.groupby(selected_groups)[items]
+                    .sum()
+                    .sum(axis=1)
+                    .reset_index(name="Count")
+                )
+                cat_total["Material"] = cat
+                summary_data.append(cat_total)
+
+            plot_df = pd.concat(summary_data, ignore_index=True)
+
+            plot_df["X_Axis"] = plot_df[selected_groups].astype(str).agg(" | ".join, axis=1)
+
+            plot_df["Percent"] = (
+                plot_df["Count"]
+                / plot_df.groupby("X_Axis")["Count"].transform("sum")
+                * 100
+            )
+
+            fig_stack = px.bar(
+                plot_df,
+                x="X_Axis",
+                y="Percent",            # use normalized values
+                color="Material",
+                template="simple_white",
+                color_discrete_sequence=px.colors.qualitative.Antique
+            )
 
 
+            fig_stack.update_layout(
+                barmode="stack",
+                font_family="Courier New",
+                yaxis_title="PROPORTION (%)",
+                xaxis_title=" | ".join(selected_groups).upper(),
+                legend_title="MATERIAL",
+                xaxis={"type": "category"},
+                yaxis=dict(range=[0, 100])  # force 0–100 scale
+            )
 
+            # ----------------------------
+            # 6️⃣ Clean hover labels
+            # ----------------------------
+            fig_stack.update_traces(
+                hovertemplate="%{x}<br>%{fullData.name}: %{y:.1f}%<extra></extra>"
+            )
+
+            # ----------------------------
+            # 7️⃣ Render in Streamlit
+            # ----------------------------
+            st.plotly_chart(fig_stack, use_container_width=True)
+
+            with tab_sub:
+                st.subheader("SPECIFIC ITEM BREAKDOWNS")
+                target_cat = st.selectbox("CHOOSE A CATEGORY TO DRILL DOWN:", options=list(DEBRIS_GROUPS.keys()))
+                
+                sub_items = DEBRIS_GROUPS[target_cat]
+                sub_plot_data = []
+                for item in sub_items:
+                    temp = f_df.groupby(selected_groups)[item].sum().reset_index()
+                    temp.columns = selected_groups + ['Count']
+                    temp['Item'] = item
+                    sub_plot_data.append(temp)
+                
+                drill_df = pd.concat(sub_plot_data)
+                drill_df['X_Axis'] = drill_df[selected_groups].astype(str).agg(' | '.join, axis=1)
+
+                chart_type = st.radio("CHART TYPE:", ["Stacked Bar", "Pie Chart"], horizontal=True)
+
+                if chart_type == "Pie Chart":
+                    # For Pie chart, we aggregate everything across the selected filters
+                    pie_data = drill_df.groupby('Item')['Count'].sum().reset_index()
+                    fig_sub = px.pie(pie_data, values='Count', names='Item',
+                                     hole=0.4, color_discrete_sequence=px.colors.sequential.Teal)
+                    fig_sub.update_traces(textinfo='percent+label')
+                else:
+                    fig_sub = px.bar(drill_df, x='X_Axis', y='Count', color='Item',
+                                     template="simple_white",
+                                     color_discrete_sequence=px.colors.qualitative.Pastel)
+                    fig_sub.update_layout(barmode='stack', barnorm='percent', yaxis_title="PROPORTION (%)")
+                
+                fig_sub.update_layout(font_family="Courier New")
+                st.plotly_chart(fig_sub, use_container_width=True)
 
     # --- SECTION: NEW ENTRY ---
     elif page == "New Entry":

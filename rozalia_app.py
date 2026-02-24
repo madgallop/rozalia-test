@@ -70,9 +70,9 @@ if df.empty:
     st.error("Critical Error: Master Database File Missing or Corrupted.")
 else:
     # --- NAVIGATION ---
-    st.sidebar.title("ROZALIA PROJECT")
+    st.sidebar.title("rozalia project")
     st.sidebar.markdown("---")
-    page = st.sidebar.radio("ARCHIVE SECTIONS", ["Dashboard", "New Entry", "History"])
+    page = st.sidebar.radio("SECTIONS", ["Dashboard", "New Entry", "History"])
 
     # --- SECTION: DASHBOARD ---
     if page == "Dashboard":
@@ -111,7 +111,7 @@ else:
                     active_filters[col] = selected
 
         # --- STEP 2: GROUPING SELECTION ---
-        st.markdown("### STEP 2: SELECT VIEW DIMENSIONS")
+        st.markdown("### STEP 2: SELECT GROUPING")
         group_options = ["Year", "State", "Type of cleanup", "Type of location", "Weather"]
         selected_groups = st.multiselect("GROUP DATA BY:", options=group_options, default=["Year"])
 
@@ -142,10 +142,10 @@ else:
             m3.metric("AVG PIECES", int(total_p / len(f_df)) if len(f_df) > 0 else 0)
 
             # --- TABS ---
-            tab_main, tab_sub = st.tabs(["TOTAL COLLECTIONS", "SUBCATEGORY DRILL-DOWN"])
+            tab_main, tab_sub = st.tabs(["TOTAL COLLECTIONS", "SUBCATEGORY BREAKDOWNS"])
 
             with tab_main:
-                st.subheader("PROPORTIONAL MATERIAL TYPE (0-100%)")
+                st.subheader("PROPORTIONAL MATERIAL TYPE")
                 
                 summary_list = []
                 for cat, items in DEBRIS_GROUPS.items():
@@ -221,7 +221,7 @@ else:
 
     # --- SECTION: NEW ENTRY ---
     elif page == "New Entry":
-        st.title("DATA ACQUISITION FORM")
+        st.title("DATA ENTRY FORM")
         with st.form("entry_form", clear_on_submit=True):
             st.subheader("METADATA")
             meta_in = {}
@@ -262,7 +262,7 @@ else:
 
     # --- SECTION: HISTORY ---
     elif page == "History":
-        st.title("MASTER ARCHIVE RECORDS")
+        st.title("CLEANUP ARCHIVE")
         hist_df = pd.read_csv(DB_FILE, low_memory=False)
         hist_df['Sort_Date'] = pd.to_datetime(hist_df['Date'], errors='coerce')
         hist_df = hist_df.sort_values(by='Sort_Date', ascending=False)

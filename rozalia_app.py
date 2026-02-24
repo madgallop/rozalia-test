@@ -8,8 +8,17 @@ from config import DEBRIS_GROUPS, METADATA_FIELDS, DROPDOWN_OPTIONS
 # --- SYSTEM CONFIGURATION ---
 DB_FILE = "master_data.csv"
 ALL_DEBRIS_ITEMS = [item for sublist in DEBRIS_GROUPS.values() for item in sublist]
-ROZALIA_PALETTE = ["#8dd3c7", "#ffffb3", "#bebada", "#fb8072", "#80b1d3", "#fdb462", "#b3de69", "#fccde5", "#d9d9d9"]
-
+ROZALIA_PALETTE = [
+    "#59AEBE", # Plastic: Lighter, cleaner Slate Blue
+    "#C78D0D", # Wood: Warm Amber
+    "#A1B5E2", # Fishing Gear: Deep Moss Green
+    "#757560", # Glass: Light Mint/Aqua (distinct from blue/green)
+    "#48733D", # Rubber: Strong Terracotta (warm contrast)
+    "#755268", # Metal: Neutral Pebble Grey
+    "#E6BAF2", # Bio-debris: Toasted Sand
+    "#F2F2BB", # Cloth/Fabric: Navy Slate
+    "#C6F2BB"  # Other: Pale Sage (very light neutral)
+]
 def load_and_sync_data():
     """Load master dataset and align with configuration schema."""
     if not os.path.exists(DB_FILE):
@@ -113,13 +122,14 @@ else:
                 padding: 10px; 
                 color: #1C396C; 
                 font-family: 'Avenir', monospace;
-                margin-bottom: 100px;
+                margin-bottom: 20;
             ">
                 <strong>{len(f_df)} records match your filters.</strong>
             </div>
             """, 
             unsafe_allow_html=True
         )
+        st.markdown("<br>", unsafe_allow_html=True)
 
         if f_df.empty or not selected_groups:
             st.warning("No data matches the selected filters or no Grouping selected.")

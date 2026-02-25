@@ -237,7 +237,7 @@ else:
             ("Year", "Year", r1_c1), ("Month", "Month", r1_c2), 
             ("State", "State", r1_c3), ("City", "City", r1_c4),
             ("Type of cleanup", "Type of cleanup", r2_c1), ("Type of location", "Type of location", r2_c2),
-            ("Recent events (human)", "Recent events (human)", r2_c3), ("Weather", "Weather", r2_c4),
+            ("Recent events", "Recent events", r2_c3), ("Weather", "Weather", r2_c4),
             ("Tide", "Tide", r3_c1), ("Flow", "Flow", r3_c2), 
             ("Recent weather", "Recent weather", r3_c3)
         ]

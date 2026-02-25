@@ -33,7 +33,7 @@ def load_and_sync_data():
         df.drop(columns=['Weather (wind knots)'], inplace=True)
 
     # 4. SAFE RENAME for Tide and Events
-    rename_map = {"Tide": "State of Tide", "Recent events": "Recent events (human)"}
+    rename_map = {"Tide": "Tide", "Recent events (human)": "Recent events (human)"}
     for old_name, new_name in rename_map.items():
         if old_name in df.columns:
             if new_name not in df.columns:
@@ -46,7 +46,7 @@ def load_and_sync_data():
     
     qualitative_meta = [
         'Type of cleanup', 'Type of location', 'Weather', 'Wind (knots) 0 if none',
-        'Recent weather', 'State of Tide', 'Flow', 'Recent events (human)',
+        'Recent weather', 'Tide', 'Flow', 'Recent events (human)',
         'Distance cleaned (miles)', 'Duration (hrs)', 'Start time', 'End time',
         '# of participants', 'Total weight (lb)', 'Unusual items', 'Notes/comments'
     ]
@@ -56,7 +56,7 @@ def load_and_sync_data():
     for col in all_meta:
         if col not in df.columns:
             df[col] = 0 if any(x in col for x in ['lb', 'miles', 'hrs', '#', 'knots']) else "Unknown"
-        elif col in ['State', 'City', 'Type of cleanup', 'Type of location', 'Weather', 'Recent weather', 'State of Tide', 'Flow', 'Recent events (human)']:
+        elif col in ['State', 'City', 'Type of cleanup', 'Type of location', 'Weather', 'Recent weather', 'Tide', 'Flow', 'Recent events (human)']:
             df[col] = df[col].fillna("Unknown").astype(str).replace(["nan", ""], "Unknown")
         elif col in ['Distance cleaned (miles)', 'Duration (hrs)', 'Wind (knots) 0 if none', 'Total weight (lb)', '# of participants']:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
@@ -234,8 +234,8 @@ else:
             ("Year", "Year", r1_c1), ("Month", "Month", r1_c2), 
             ("State", "State", r1_c3), ("City", "City", r1_c4),
             ("Type of cleanup", "Type of cleanup", r2_c1), ("Type of location", "Type of location", r2_c2),
-            ("Recent events", "Recent events (human)", r2_c3), ("Weather", "Weather", r2_c4),
-            ("Tide", "State of Tide", r3_c1), ("Flow", "Flow", r3_c2), 
+            ("Recent events (human)", "Recent events (human)", r2_c3), ("Weather", "Weather", r2_c4),
+            ("Tide", "Tide", r3_c1), ("Flow", "Flow", r3_c2), 
             ("Recent weather", "Recent weather", r3_c3)
         ]
 

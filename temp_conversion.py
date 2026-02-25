@@ -3,7 +3,7 @@ import os
 
 # 1. SETUP - Make sure this matches the actual file on your Desktop/Folder
 # If your file is named something else, change it here!
-excel_file = "DataWithFoamForUpload.xlsx" 
+excel_file = "DataCSV2-25.csv" 
 target_csv = "master_data.csv"
 
 def run_migration():
@@ -14,45 +14,48 @@ def run_migration():
 
     print("Reading Excel file... this might take 10-20 seconds.")
     # Reading the first sheet by default
-    df = pd.read_excel(excel_file)
+    df = pd.read_csv(excel_file)
 
     # 2. DATE CLEANING
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-    df['Year'] = df['Date'].dt.year.fillna("Unknown")
-    df['Month'] = df['Date'].dt.strftime('%B').fillna("Unknown")
+    df['Year'] = df['Date'].dt.year
+    df['Month'] = df['Date'].dt.strftime('%B')
 
-    # 3. METADATA MAPPING (Matching your specific Excel headers)
+    # 3. METADATA LOGIC
     categorical_cols = [
-        'Type of cleanup', 
-        'Type of location', 
-        'Weather', 
-        'Recent weather', 
-        'Tide', 
-        'Flow', 
-        'Recent events'
+        'Location', 'City', 'State', 'Type of cleanup', 'Type of location', 
+        'Weather', 'Weather (wind knots)', 'Recent weather', 'Tide', 'Flow', 
+        'Recent events', 'Unusual items', 'Notes/comments'
     ]
     
     for col in categorical_cols:
-        if col in df.columns:
-            df[col] = df[col].fillna("Unknown").astype(str).replace(["nan", ""], "Unknown")
-        else:
-            print(f"Warning: Column '{col}' not found in Excel!")
+        df[col] = df[col].astype(str).str.strip().str.title()
 
-    # 4. NUMERIC MAPPING (Matching your specific Wind header)
+    df[categorical_cols] = df[categorical_cols].replace(['Nan', 'None', ''], 'Unknown')
+
+    df['Outlier'] = df['Outlier'].fillna("").replace(['nan', 'None', 'Unknown'], "")
+
+    # 4. NUMERIC LOGIC 
+
     numeric_cols = [
         'Distance cleaned (miles)', 
         'Duration (hrs)', 
-        'Wind (knots) 0 if none', 
         'Total weight (lb)', 
-        '# of participants'
+        '# of participants', 
     ]
     
     for col in numeric_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            if col in df.columns:
+                # Step A: Remove any non-numeric characters (like "lbs" or "miles")
+                # This regex keeps digits and decimals, removes everything else
+                df[col] = df[col].astype(str).str.replace(r'[^0-9.]', '', regex=True)
+                
+                # Step B: Convert to actual numbers
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    df = df.drop_duplicates() #in case the same cleanup gets submitted twice 
 
     # 5. SAVE TO CSV
-    # We use encoding='utf-8-sig' to make sure it's readable by both Python and Excel
     df.to_csv(target_csv, index=False, encoding='utf-8-sig')
     print(f"\nSuccess! '{target_csv}' created.")
     print(f"Rows processed: {len(df)}")

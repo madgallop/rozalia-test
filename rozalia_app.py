@@ -222,6 +222,90 @@ else:
         f_df['Year'] = f_df['Date'].dt.year.fillna("Unknown").astype(str)
         f_df['Month'] = f_df['Date'].dt.month_name().fillna("Unknown")
 
+        # --- STEP 0: TOP DATA CHARTS ---
+        with st.expander("CONFIGURE TOP DATA CHARTS", expanded=True):
+
+            t_col1, t_col2, t_col3 = st.columns([2, 2, 1])
+            
+            # DEFAULT: Total Pieces (Count)
+            sort_method = t_col1.radio(
+                "SELECT VIEW:", 
+                ["Total Pieces (Count)", "Frequency (%)"],
+                index=0,  # Sets 'Total Pieces' as default
+                help="Total Pieces: Sum of all items found. Frequency: % of cleanups where item was found."
+            )
+            
+            # DEFAULT: Toggle ON
+            group_sizes = t_col2.toggle("Group Sizes (Micro/Small/Large)", value=True)
+            num_bars = t_col3.number_input("Number of Bars:", min_value=3, max_value=25, value=10)
+
+            # 1. Prep Data
+            top_df_raw = df.copy()
+            total_cleanups = len(top_df_raw)
+            
+            # 2. Define sub-groups matching your Tier naming exactly
+            size_groups = {
+                "Grouped Microplastics": ["Micro plastic 0-5mm", "SMALL plastic 5-30mm", "LARGE plastic >30mm"],
+                "Grouped Microfoams": ["Micro foam 0-5mm", "SMALL foam 5-30mm", "LARGE foam >30mm"],
+                "Grouped Microfibers": ["Line/net fiber: MICRO 0-5mm", "Line/net fiber: SMALL 5-30mm", "Line/net fiber: LARGE >30mm"]
+            }
+
+            plot_items = ALL_DEBRIS_ITEMS.copy()
+
+            if group_sizes:
+                for group_name, items in size_groups.items():
+                    valid_items = [i for i in items if i in top_df_raw.columns]
+                    if valid_items:
+                        top_df_raw[group_name] = top_df_raw[valid_items].sum(axis=1)
+                        plot_items = [i for i in plot_items if i not in valid_items]
+                        plot_items.append(group_name)
+
+            # 3. Calculation Logic
+            if not top_df_raw.empty:
+                if "Frequency" in sort_method:
+                    counts = (top_df_raw[plot_items] > 0).sum().reset_index()
+                    counts.columns = ['Item', 'Cleanups_Found']
+                    counts['Value'] = (counts['Cleanups_Found'] / total_cleanups) * 100
+                    y_label = "PERCENT OF EXPEDITIONS (%)"
+                    suffix = "%"
+                    text_fmt = '.1f'
+                else:
+                    counts = top_df_raw[plot_items].sum().reset_index()
+                    counts.columns = ['Item', 'Value']
+                    counts['Cleanups_Found'] = (top_df_raw[plot_items] > 0).sum().values
+                    y_label = "TOTAL PIECES COLLECTED"
+                    suffix = " pieces"
+                    text_fmt = ','
+
+                # 4. Filter, Sort, and Build Chart
+                top_plot_df = counts.sort_values(by='Value', ascending=False).head(num_bars)
+
+                fig_top = px.bar(
+                    top_plot_df, x='Item', y='Value',
+                    template="simple_white",
+                    color_discrete_sequence=[ROZALIA_PALETTE[3]], 
+                    text_auto=text_fmt
+                )
+
+                fig_top.update_traces(
+                    hovertemplate=(
+                        "<b>%{x}</b><br>" +
+                        f"{'Frequency' if 'Frequency' in sort_method else 'Total'}: %{{y:.1f}}{suffix}<br>" +
+                        "Found in %{customdata[0]} expeditions<extra></extra>"
+                    ),
+                    customdata=top_plot_df[['Cleanups_Found']]
+                )
+
+                fig_top.update_layout(
+                    title=f"Top {num_bars} Items Found: {sort_method}",
+                    xaxis_title=None,
+                    yaxis_title=y_label,
+                    font_family="Avenir",
+                    xaxis={'categoryorder':'total descending'}
+                )
+                st.plotly_chart(fig_top, use_container_width=True)
+
+
         # --- STEP 1: FILTER DATA ---
         st.markdown("### DATA CONTROLS")
         filter_cols = ["Year", "Month", "State", "City", "Type of cleanup", "Type of location", "Weather", "Tide"]

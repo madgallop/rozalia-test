@@ -393,17 +393,21 @@ else:
                     if chart_type == "Pie Chart":
                         fig_sub = px.pie(sub_df, values='Count', names='Item', hole=0.4,
                                          color_discrete_sequence=ROZALIA_PALETTE)
+                        fig_sub.update_traces(
+                            hovertemplate="<b>%{label}</b><br>Total: %{value:,} pieces<extra></extra>"
+                        )
                     else:
                         fig_sub = px.bar(sub_df, x='X_Axis', y='Count', color='Item',
                                          template="simple_white", color_discrete_sequence=ROZALIA_PALETTE,
                                          category_orders={"X_Axis": sorted(sub_df['X_Axis'].unique())})
                         fig_sub.update_layout(barnorm='percent', yaxis_title="PROPORTION (%)")
+                        fig_sub.update_traces(
+                            hovertemplate="<b>%{fullData.name}</b><br>Total: %{customdata[0]:,} pieces<br>Share: %{y:.1f}%<extra></extra>",
+                            customdata=sub_df[['Count']] 
+                        )
                     
-                    # REVERTED: Applied hover logic here as well
-                    fig_sub.update_traces(
-                        hovertemplate="<b>%{label if label else fullData.name}</b><br>Total: %{value if value else customdata[0]:,} pieces<br>Share: %{percent if percent else y:.1f}%<extra></extra>",
-                        customdata=sub_df[['Count']] if chart_type != "Pie Chart" else None
-                    )
+
+            
                     
                     fig_sub.update_layout(xaxis_title=None, font_family="Avenir")
                     st.plotly_chart(fig_sub, use_container_width=True)

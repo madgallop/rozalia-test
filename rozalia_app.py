@@ -287,15 +287,6 @@ else:
                     text_auto=text_fmt
                 )
 
-                fig_top.update_traces(
-                    hovertemplate=(
-                        "<b>%{x}</b><br>" +
-                        f"{'Frequency' if 'Frequency' in sort_method else 'Total'}: %{{y:.1f}}{suffix}<br>" +
-                        "Found in %{customdata[0]} expeditions<extra></extra>"
-                    ),
-                    customdata=top_plot_df[['Cleanups_Found']]
-                )
-
                 fig_top.update_layout(
                     title=f"Top {num_bars} Items Found: {sort_method}",
                     xaxis_title=None,

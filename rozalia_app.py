@@ -121,7 +121,6 @@ else:
                         counts[item] = d_cols[j % 3].number_input(item, min_value=0, step=1)
 
             if st.form_submit_button("COMMIT TO MASTER LOG"):
-                # 1. BETTER VALIDATION
                 missing_fields = [r for r in REQUIRED_FIELDS if not meta_in.get(r)]
                 
                 if missing_fields:
@@ -131,9 +130,7 @@ else:
                     new_row = {**meta_in, **counts}
                     new_row["Date"] = pd.to_datetime(meta_in["Date"])
                     
-                
-
-                    # 3. AUTO-CALCULATE ALL TOTALS (Exact Map)
+                    # 3. AUTO-CALCULATE ALL TOTALS 
                     category_to_total_col = {
                         "Plastic": "Total Plastic",
                         "Foam": "Total Foam",
@@ -161,7 +158,6 @@ else:
                     updated_df = pd.concat([current_df, new_df], ignore_index=True)
                     
                     # FILTER: Only save columns that exist in your config
-                    # This kills duplicate columns like "date" vs "Date"
                     allowed = METADATA_FIELDS + ALL_DEBRIS_ITEMS + SUMMARY_TOTALS + ["Date"]
                     final_cols = [c for c in updated_df.columns if c in allowed]
                     # Remove exact duplicates in final_cols list while keeping order
@@ -213,139 +209,117 @@ else:
                 mime="text/csv"
             )
 
+
+
+
 # --- SECTION 3: DASHBOARD ---
     elif page == "Dashboard":
         st.title("DATA DASHBOARD")
 
-        # Prep DataFrame for filtering
+        # 1. Efficient Data Preparation
         f_df = df.copy()
-        f_df['Date_Converted'] = pd.to_datetime(f_df['Date'], errors='coerce')
-        f_df['Year'] = f_df['Date_Converted'].dt.year.fillna("Unknown").astype(str)
-        f_df['Month'] = f_df['Date_Converted'].dt.strftime('%B').fillna("Unknown")
+        f_df['Date'] = pd.to_datetime(f_df['Date'], errors='coerce')
+        f_df['Year'] = f_df['Date'].dt.year.fillna("Unknown").astype(str)
+        f_df['Month'] = f_df['Date'].dt.month_name().fillna("Unknown")
 
-        # --- STEP 1: FILTER DATA (Full Width Grid) ---
+        # --- STEP 1: FILTER DATA ---
         st.markdown("### DATA CONTROLS")
-        st.markdown("**STEP 1: FILTER DATA**")
+        filter_cols = ["Year", "Month", "State", "City", "Type of cleanup", "Type of location", "Weather", "Tide"]
         
-        # 4-column grid for filters
-        r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
-        r2_c1, r2_c2, r2_c3, r2_c4 = st.columns(4)
-        r3_c1, r3_c2, r3_c3, r3_c4 = st.columns(4)
+        # Grid layout for filters
+        rows = [filter_cols[i:i + 4] for i in range(0, len(filter_cols), 4)]
+        for row in rows:
+            cols = st.columns(4)
+            for idx, col_name in enumerate(row):
+                if col_name in f_df.columns:
+                    options = sorted(f_df[col_name].unique().astype(str))
+                    selected = cols[idx].multiselect(f"SELECT {col_name.upper()}", options=options)
+                    if selected:
+                        f_df = f_df[f_df[col_name].astype(str).isin(selected)]
 
-        # Full original filter list
-        filter_mapping = [
-            ("Year", "Year", r1_c1), ("Month", "Month", r1_c2), 
-            ("State", "State", r1_c3), ("City", "City", r1_c4),
-            ("Type of cleanup", "Type of cleanup", r2_c1), ("Type of location", "Type of location", r2_c2),
-            ("Recent events", "Recent events", r2_c3), ("Weather", "Weather", r2_c4),
-            ("Tide", "Tide", r3_c1), ("Flow", "Flow", r3_c2), 
-            ("Recent weather", "Recent weather", r3_c3)
-        ]
-
-        for label, col_name, slot in filter_mapping:
-            if col_name in f_df.columns:
-                options = sorted(f_df[col_name].unique().astype(str))
-                selected = slot.multiselect(f"SELECT {label.upper()}", options=options)
-                if selected:
-                    f_df = f_df[f_df[col_name].astype(str).isin(selected)]
-
-        # --- STEP 2: VIEW DIMENSIONS (Stacked Below) ---
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("**STEP 2: VIEW DIMENSIONS**")
-        group_options = ["Year", "State", "Type of cleanup", "Type of location", "Weather"]
-        selected_groups = st.multiselect("GROUP DATA BY:", options=group_options, default=["Year"])
-
-        # Record Count Display
-        st.markdown(f"""
-            <div style="padding: 10px 0px; color: #002b36; font-family: 'Avenir', sans-serif; margin-bottom: 50px;">
-                <span style="font-size: 1.2rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                    {len(f_df):,} RECORDS MATCH YOUR FILTERS
-                </span>
-            </div>
-        """, unsafe_allow_html=True)
+        # --- STEP 2: VIEW DIMENSIONS ---
+        st.markdown("**STEP 2: GROUP DATA BY**")
+        group_options = ["Year", "Month", "State", "Type of cleanup", "Type of location"]
+        selected_groups = st.multiselect("GROUP BY:", options=group_options, default=["Year"], label_visibility="collapsed")
 
         if f_df.empty or not selected_groups:
-            st.warning("No data matches the selected filters or no Grouping selected.")
+            st.warning("No records match these filters or no grouping selected.")
         else:
-            # --- METRICS ---
+            # Create a combined X-Axis label once
+            f_df['X_Axis'] = f_df[selected_groups].astype(str).agg(' | '.join, axis=1)
+            
+            # Metrics
+            total_pieces = int(f_df[ALL_DEBRIS_ITEMS].sum().sum())
             m1, m2, m3 = st.columns(3)
-            total_p = int(f_df[ALL_DEBRIS_ITEMS].sum().sum())
-            m1.metric("EXPEDITIONS", len(f_df))
-            m2.metric("TOTAL PIECES", f"{total_p:,}")
-            m3.metric("AVG PIECES", int(total_p / len(f_df)) if len(f_df) > 0 else 0)
+            m1.metric("EXPEDITIONS", f"{len(f_df):,}")
+            m2.metric("TOTAL PIECES", f"{total_pieces:,}")
+            m3.metric("AVG PIECES", f"{int(total_pieces / len(f_df)) if len(f_df) > 0 else 0:,}")
 
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            # --- TABS ---
             tab_main, tab_sub = st.tabs(["TOTAL COLLECTIONS", "SUBCATEGORY BREAKDOWNS"])
 
             with tab_main:
                 st.subheader("MATERIAL TYPE")
-                summary_list = []
+                cat_data = []
                 for cat, items in DEBRIS_GROUPS.items():
-                    temp = f_df.groupby(selected_groups)[items].sum().sum(axis=1).reset_index(name="Count")
-                    temp['Material'] = cat
-                    summary_list.append(temp)
+                    cat_sum = f_df.groupby('X_Axis')[items].sum().sum(axis=1).reset_index(name='Count')
+                    cat_sum['Material'] = cat
+                    cat_data.append(cat_sum)
                 
-                plot_df = pd.concat(summary_list, ignore_index=True)
+                plot_df = pd.concat(cat_data)
+
+                fig_stack = px.bar(
+                    plot_df, x='X_Axis', y='Count', color='Material',
+                    template="simple_white",
+                    color_discrete_sequence=ROZALIA_PALETTE,
+                    barmode='stack',
+                    category_orders={"X_Axis": sorted(plot_df['X_Axis'].unique())}
+                )
                 
-                if plot_df['Count'].sum() > 0:
-                    plot_df['X_Axis'] = plot_df[selected_groups].astype(str).agg(' | '.join, axis=1)
-                    
-                    fig_stack = px.bar(
-                        plot_df, x='X_Axis', y='Count', color='Material',
-                        template="simple_white",
-                        color_discrete_sequence=ROZALIA_PALETTE,
-                        barmode='stack'
-                    )
-                    
-                    fig_stack.update_layout(
-                        barnorm='percent',
-                        font_family="Avenir", 
-                        yaxis_title="PROPORTION (%)", 
-                        xaxis_title=None,
-                        xaxis={'type': 'category'}
-                    )
-                    
-                    fig_stack.update_traces(
-                        hovertemplate="<b>%{fullData.name}</b><br>Total: %{customdata[0]:,} pieces<br>Share: %{y:.1f}%<extra></extra>",
-                        customdata=plot_df[['Count']]
-                    )
-                    st.plotly_chart(fig_stack, use_container_width=True)
-                else:
-                    st.info("No debris data recorded for the current selection.")
+                # REVERTED: Using your specific hovertemplate logic
+                fig_stack.update_traces(
+                    hovertemplate="<b>%{fullData.name}</b><br>Total: %{customdata[0]:,} pieces<br>Share: %{y:.1f}%<extra></extra>",
+                    customdata=plot_df[['Count']]
+                )
+
+                fig_stack.update_layout(
+                    barnorm='percent', 
+                    yaxis_title="PROPORTION (%)", 
+                    xaxis_title=None,
+                    font_family="Avenir"
+                )
+                st.plotly_chart(fig_stack, use_container_width=True)
 
             with tab_sub:
                 st.subheader("SUBCATEGORY BREAKDOWNS")
                 target_cat = st.selectbox("CHOOSE A SUBCATEGORY:", options=list(DEBRIS_GROUPS.keys()))
-                
                 sub_items = DEBRIS_GROUPS[target_cat]
-                if f_df[sub_items].sum().sum() == 0:
-                    st.warning(f"No {target_cat} items found for this selection.")
-                else:
-                    sub_plot_data = []
-                    for item in sub_items:
-                        temp = f_df.groupby(selected_groups)[item].sum().reset_index(name="Count")
-                        temp['Item'] = item
-                        sub_plot_data.append(temp)
-                    
-                    drill_df = pd.concat(sub_plot_data, ignore_index=True)
-                    drill_df['X_Axis'] = drill_df[selected_groups].astype(str).agg(' | '.join, axis=1)
+                
+                # Filter out items with 0 counts to keep the chart clean
+                item_counts = f_df[sub_items].sum()
+                active_items = item_counts[item_counts > 0].index.tolist()
 
-                    chart_type = st.radio("CHART TYPE:", ["Stacked Bar", "Pie Chart"], horizontal=True)
+                if not active_items:
+                    st.info(f"No {target_cat} items found for this selection.")
+                else:
+                    sub_df = f_df.melt(id_vars=['X_Axis'], value_vars=active_items, var_name='Item', value_name='Count')
+                    sub_df = sub_df.groupby(['X_Axis', 'Item'])['Count'].sum().reset_index()
+
+                    chart_type = st.radio("VIEW AS:", ["Stacked Bar", "Pie Chart"], horizontal=True)
 
                     if chart_type == "Pie Chart":
-                        pie_data = drill_df.groupby('Item')['Count'].sum().reset_index()
-                        fig_sub = px.pie(pie_data, values='Count', names='Item',
-                                         hole=0.4, color_discrete_sequence=ROZALIA_PALETTE)
+                        fig_sub = px.pie(sub_df, values='Count', names='Item', hole=0.4,
+                                         color_discrete_sequence=ROZALIA_PALETTE)
                     else:
-                        fig_sub = px.bar(drill_df, x='X_Axis', y='Count', color='Item',
-                                         template="simple_white", color_discrete_sequence=ROZALIA_PALETTE)
-                        fig_sub.update_layout(barnorm='percent', barmode='stack', yaxis_title="PROPORTION (%)", xaxis={'type': 'category'})
+                        fig_sub = px.bar(sub_df, x='X_Axis', y='Count', color='Item',
+                                         template="simple_white", color_discrete_sequence=ROZALIA_PALETTE,
+                                         category_orders={"X_Axis": sorted(sub_df['X_Axis'].unique())})
+                        fig_sub.update_layout(barnorm='percent', yaxis_title="PROPORTION (%)")
                     
-                    fig_sub.update_layout(font_family="Avenir")
+                    # REVERTED: Applied hover logic here as well
                     fig_sub.update_traces(
-                        hovertemplate="<b>%{fullData.name}</b><br>Total: %{customdata[0]:,} pieces<br>Share: %{y:.1f}%<extra></extra>",
-                        customdata=plot_df[['Count']]
+                        hovertemplate="<b>%{label if label else fullData.name}</b><br>Total: %{value if value else customdata[0]:,} pieces<br>Share: %{percent if percent else y:.1f}%<extra></extra>",
+                        customdata=sub_df[['Count']] if chart_type != "Pie Chart" else None
                     )
+                    
+                    fig_sub.update_layout(xaxis_title=None, font_family="Avenir")
                     st.plotly_chart(fig_sub, use_container_width=True)

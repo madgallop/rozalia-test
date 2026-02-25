@@ -72,95 +72,110 @@ else:
     st.sidebar.title("ROZALIA PROJECT")
     page = st.sidebar.radio("SECTIONS", ["New Entry", "History", "Dashboard"])
 
-    # --- SECTION 1: NEW ENTRY ---
+
+
+
+# --- SECTION 1: NEW ENTRY ---
     if page == "New Entry":
         st.title("DATA ENTRY FORM")
         with st.form("entry_form", clear_on_submit=True):
             st.subheader("METADATA")
             meta_in = {}
             cols = st.columns(3)
+
+            # Define which fields are mandatory
+            REQUIRED_FIELDS = ["Date", "Location", "City", "State"]
+
             for i, field in enumerate(METADATA_FIELDS):
+                if field == "Outlier": continue 
+                
                 c = cols[i % 3]
+                
+                # Create the label: Uppercase it and add a red star if required
+                display_label = field.upper().replace("#", "NUMBER")
+                if field in REQUIRED_FIELDS:
+                    display_label = f"{display_label} :red[*]"
+
                 if field in DROPDOWN_OPTIONS:
-                    meta_in[field] = c.selectbox(field.upper(), options=DROPDOWN_OPTIONS[field], index=None)
+                    meta_in[field] = c.selectbox(display_label, options=DROPDOWN_OPTIONS[field], index=None)
+                
                 elif "Date" in field:
-                    meta_in[field] = c.date_input(field.upper(), date.today())
-                elif any(x in field for x in ["Latitude", "Longitude", "Total weight", "Distance", "Duration", "#"]):
-                    meta_in[field] = c.number_input(field.upper(), value=0.0)
+                    meta_in[field] = c.date_input(display_label, date.today())
+                    
+                elif any(x in field for x in ["Total weight", "Distance", "Duration"]):
+                    # Floats for weights/miles
+                    meta_in[field] = c.number_input(display_label, min_value=0.0, step=0.1, value=0.0)
+                    
+                elif "Participants" in field or "#" in field:
+                    # Integers for people
+                    meta_in[field] = c.number_input(display_label, min_value=0, step=1, value=0)
+                    
                 else:
-                    meta_in[field] = c.text_input(field.upper())
+                    meta_in[field] = c.text_input(display_label)
 
             st.markdown("---")
             st.subheader("DEBRIS QUANTIFICATION")
             counts = {}
             tabs = st.tabs([k.upper() for k in DEBRIS_GROUPS.keys()])
-            for i, group in enumerate(DEBRIS_GROUPS.keys()):
+            for i, (group_name, items) in enumerate(DEBRIS_GROUPS.items()):
                 with tabs[i]:
-                    items = DEBRIS_GROUPS[group]
                     d_cols = st.columns(3)
                     for j, item in enumerate(items):
-                        counts[item] = d_cols[j % 3].number_input(item, min_value=0, step=1, value=0)
+                        counts[item] = d_cols[j % 3].number_input(item, min_value=0, step=1)
 
             if st.form_submit_button("COMMIT TO MASTER LOG"):
-                if not meta_in.get("Location") or not meta_in.get("City"):
-                    st.warning("Incomplete Data: Location and City fields are mandatory.")
+                if not meta_in.get("Location") or not meta_in.get("City") or not meta_in.get("State") or not meta_in.get("Date"):
+                    st.error("Missing required fields!")
                 else:
-                    # 1. Load existing data
-                    current_df = load_and_sync_data()
-                    
-                    # 2. Prepare the new row
+                    # 1. Prepare Row
                     new_row = {**meta_in, **counts}
-                    new_row["Date"] = pd.to_datetime(meta_in["Date"])
+                    # Ensure the Date is saved without the time '00:00:00'
+                    new_row["Date"] = meta_in["Date"].strftime('%Y-%m-%d') if hasattr(meta_in["Date"], 'strftime') else meta_in["Date"]
 
-                    # 3. CALCULATE SUBTOTALS ON THE FLY
-                    # This maps your internal groups to your specific CSV Column Names
-                    
-                    # Plastic Total
-                    new_row["Plastic Total"] = sum(counts.get(i, 0) for i in DEBRIS_GROUPS.get("Plastic", []))
-                    
-                    # PPE Total
-                    new_row["PPE Total"] = sum(counts.get(i, 0) for i in DEBRIS_GROUPS.get("PPE", []))
-                    
-                    # Metal Total
-                    new_row["Metal Total"] = sum(counts.get(i, 0) for i in DEBRIS_GROUPS.get("Metal", []))
-                    
-                    # Glass/Rubber Total
-                    gr_items = DEBRIS_GROUPS.get("Glass & Rubber", [])
-                    new_row["Glass/Rubber Total"] = sum(counts.get(i, 0) for i in gr_items)
-                    
-                    # Paper/Cloth Total
-                    pc_items = DEBRIS_GROUPS.get("Paper & Cloth", [])
-                    new_row["Paper/Cloth Total"] = sum(counts.get(i, 0) for i in pc_items)
-                    
-                    # Fishing Debris Total
-                    new_row["Fishing Debris Total"] = sum(counts.get(i, 0) for i in DEBRIS_GROUPS.get("Fishing Debris", []))
-                    
-                    # Micro/Fibers Total
-                    micro_items = DEBRIS_GROUPS.get("Microplastics & Fibers", [])
-                    new_row["Microplastics, Fibers, Fragments Total"] = sum(counts.get(i, 0) for i in micro_items)
-                    
-                    # Foam Total
-                    new_row["Foam Total"] = sum(counts.get(i, 0) for i in DEBRIS_GROUPS.get("Foam", []))
-                    
-                    # Other Total
-                    new_row["Other Total"] = sum(counts.get(i, 0) for i in DEBRIS_GROUPS.get("Other", []))
+                    # 2. AUTO-CALCULATE ALL TOTALS (Matching Config exactly)
+                    # We map your DEBRIS_GROUPS keys to your SUMMARY_TOTALS names
+                    category_to_total_col = {
+                        "Plastic": "Total Plastic",
+                        "Foam": "Total Foam",
+                        "PPE": "Total PPE",
+                        "Metal": "Total Metal",
+                        "Glass & Rubber": "Total Glass & Rubber",
+                        "Paper & Cloth": "Total Paper & Cloth",
+                        "Fishing Debris": "Total Fishing Debris",
+                        "Microplastics & Fibers": "Total Microplastics"
+                    }
 
-                    # 4. CALCULATE GRAND TOTAL
-                    # This adds up all the subtotals we just created
-                    totals_to_sum = [
-                        "Plastic Total", "PPE Total", "Metal Total", "Glass/Rubber Total",
-                        "Paper/Cloth Total", "Fishing Debris Total", 
-                        "Microplastics, Fibers, Fragments Total", "Foam Total", "Other Total"
-                    ]
-                    new_row["Total Total"] = sum(new_row[t] for t in totals_to_sum)
+                    grand_total = 0
+                    for group_name, total_col in category_to_total_col.items():
+                        # Sum items for this specific group
+                        group_sum = sum(counts.get(item, 0) for item in DEBRIS_GROUPS.get(group_name, []))
+                        new_row[total_col] = group_sum
+                        grand_total += group_sum
+                    
+                    # Include 'Other' in the Grand Total (even though it doesn't have a summary column)
+                    grand_total += sum(counts.get(item, 0) for item in DEBRIS_GROUPS.get("Other", []))
+                    new_row["Grand Total"] = grand_total
 
-                    # 5. Save to CSV
+                    # 3. Load, Append, and Save
+                    current_df = load_and_sync_data() # This keeps your columns in order
                     new_df = pd.DataFrame([new_row])
-                    updated_df = pd.concat([current_df, new_df], ignore_index=True)
-                    updated_df.to_csv(DB_FILE, index=False)
                     
-                    st.success(f"Log Entry Committed! Total Debris: {new_row['Total Total']}")
+                    # Concatenate the new row
+                    updated_df = pd.concat([current_df, new_df], ignore_index=True)
+                    
+                    # Final Safety: Only keep columns defined in your config lists
+                    # This prevents any "accidental" columns from saving to your CSV
+                    valid_cols = METADATA_FIELDS + ALL_DEBRIS_ITEMS + SUMMARY_TOTALS
+                    # We filter to only columns that actually exist in the dataframe
+                    final_cols = [c for c in updated_df.columns if c in valid_cols]
+                    updated_df = updated_df[final_cols]
+                    
+                    updated_df.to_csv(DB_FILE, index=False, encoding='utf-8-sig')
+                    
+                    st.success(f"Entry Saved! Grand Total: {grand_total}")
+                    st.balloons()
                     st.rerun()
+            
 
 # --- SECTION 2: HISTORY ---
     elif page == "History":

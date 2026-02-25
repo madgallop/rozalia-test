@@ -8,17 +8,20 @@ from config import DEBRIS_GROUPS, METADATA_FIELDS, DROPDOWN_OPTIONS
 # --- SYSTEM CONFIGURATION ---
 DB_FILE = "master_data.csv"
 ALL_DEBRIS_ITEMS = [item for sublist in DEBRIS_GROUPS.values() for item in sublist]
+
+# Your custom categorical palette
 ROZALIA_PALETTE = [
-    "#59AEBE", # Plastic: Lighter, cleaner Slate Blue
-    "#C78D0D", # Wood: Warm Amber
-    "#A1B5E2", # Fishing Gear: Deep Moss Green
-    "#757560", # Glass: Light Mint/Aqua (distinct from blue/green)
-    "#48733D", # Rubber: Strong Terracotta (warm contrast)
-    "#755268", # Metal: Neutral Pebble Grey
-    "#E6BAF2", # Bio-debris: Toasted Sand
-    "#F2F2BB", # Cloth/Fabric: Navy Slate
-    "#C6F2BB"  # Other: Pale Sage (very light neutral)
+    "#7BB3CC", # Plastic
+    "#E8A85D", # Wood/Microplastics
+    "#92AD94", # Fibers/Sage
+    "#A4C3B2", # Glass
+    "#BC6C25", # Rubber
+    "#8D99AE", # Metal
+    "#D4A373", # Bio-debris
+    "#788794", # Cloth/Fabric (Toned down)
+    "#E9EDC9"  # Other
 ]
+
 def load_and_sync_data():
     """Load master dataset and align with configuration schema."""
     if not os.path.exists(DB_FILE):
@@ -26,201 +29,57 @@ def load_and_sync_data():
     
     df = pd.read_csv(DB_FILE, low_memory=False)
     
-    MASTER_ORDER = METADATA_FIELDS + ALL_DEBRIS_ITEMS
-    for col in MASTER_ORDER:
-        if col not in df.columns:
+    # 1. Standardize Dates
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    
+    # 2. Fix the Categories (The "No Options" Fix)
+    # These columns MUST be strings so the dropdowns can show them
+    categorical_fields = [
+        'Year', 'Month', 'State', 'City', 'Type of cleanup', 
+        'Type of location', 'Weather', 'Recent weather', 
+        'Tide', 'Flow', 'Recent events'
+    ]
+    
+    for col in categorical_fields:
+        if col in df.columns:
+            # Replace empty/NaN with 'Unknown'
+            df[col] = df[col].fillna("Unknown").astype(str).replace(["nan", ""], "Unknown")
+        else:
+            # If the column is missing entirely, create it
+            df[col] = "Unknown"
+
+    # 3. Fix the Numbers (Debris and Stats)
+    # This ensures columns like "Total weight (lb)" don't break the charts
+    numeric_fields = ALL_DEBRIS_ITEMS + [
+        'Distance cleaned (miles)', 'Duration (hrs)', 
+        'Wind (knots) 0 if none', 'Total weight (lb)', '# of participants'
+    ]
+    
+    for col in numeric_fields:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        else:
             df[col] = 0
             
     return df
 
-# --- UI STYLING: ARCHIVAL OCEAN THEME ---
+# --- UI STYLING ---
 st.set_page_config(page_title="Rozalia Archive", layout="wide")
 
-# st.markdown("""
-#     <style>
-#         .main { background-color: #f4f1ea; }
-#         h1, h2, h3 { font-family: 'Avenir New', Avenir, monospace; color: #fffdfa; }
-        
-#         /* Highlighter Yellow Accents */
-#         .stButton>button { 
-#             background-color: #ffffb3; 
-#             color: #002b36; 
-#             border-radius: 0px;
-#             border: 2px solid #002b36;
-#             font-weight: bold;
-#         }
-#         # .stButton>button:hover { background-color: #f0f096; border: 2px solid #015369; }
-        
-#         /* Metric Styling */
-#         [data-testid="stMetricValue"] { color: #002b36; background-color: #f4f1ea; padding: 5px; }
-        
-#         /* Sidebar Styling */
-#         [data-testid="stSidebar"] { background-color: #f7f3e6; border-right: 1px solid #002b36; }
-        
-#         # /* Dataframe border */
-#         # .stDataFrame { border: 1px solid #002b36; }
-#     </style>
-# """, unsafe_allow_html=True)
-
 # Data Refresh
-st.cache_data.clear()
 df = load_and_sync_data()
 
 if df.empty:
     st.error("Critical Error: Master Database File Missing or Corrupted.")
 else:
     # --- NAVIGATION ---
-    st.sidebar.title("rozalia project")
+    st.sidebar.title("ROZALIA PROJECT")
     st.sidebar.markdown("---")
-    page = st.sidebar.radio("SECTIONS", ["Dashboard", "New Entry", "History"])
+    # Default order: New Entry -> History -> Dashboard
+    page = st.sidebar.radio("SECTIONS", ["New Entry", "History", "Dashboard"])
 
-    # --- SECTION: DASHBOARD ---
-    if page == "Dashboard":
-        st.title("CLEANUP ANALYTICS")
-
-        # --- STEP 1: CASCADING FILTERS (Slicers) ---
-        st.sidebar.markdown("### STEP 1: FILTER DATA")
-        st.sidebar.caption("Optional: Hold Ctrl to select multiple. Filters are linked.")
-
-        f_df = df.copy()
-        f_df['Date_Converted'] = pd.to_datetime(f_df['Date'], errors='coerce')
-        f_df['Year'] = f_df['Date_Converted'].dt.year.fillna("Unknown").astype(str)
-        f_df['Month'] = f_df['Date_Converted'].dt.strftime('%B').fillna("Unknown")
-
-        filter_cols = {
-            "Year": "Year",
-            "Month": "Month",
-            "State": "State",
-            "City": "City",
-            "Type of cleanup": "Type of cleanup",
-            "Type of location": "Type of location",
-            "Recent events": "Recent events (human)",
-            "Weather": "Weather",
-            "Tide": "State of Tide",
-            "Flow": "Flow",
-            "Recent weather": "Recent weather"
-        }
-
-        active_filters = {}
-        for label, col in filter_cols.items():
-            if col in f_df.columns:
-                available_options = sorted(f_df[col].unique().astype(str))
-                selected = st.sidebar.multiselect(f"SELECT {label.upper()}", options=available_options)
-                if selected:
-                    f_df = f_df[f_df[col].astype(str).isin(selected)]
-                    active_filters[col] = selected
-
-        # --- STEP 2: GROUPING SELECTION ---
-        st.markdown("### STEP 2: SELECT GROUPING")
-        group_options = ["Year", "State", "Type of cleanup", "Type of location", "Weather"]
-        selected_groups = st.multiselect("GROUP DATA BY:", options=group_options, default=["Year"])
-
-        st.markdown(
-            f"""
-            <div style="
-                # background-color: #D1AE3B; 
-                padding: 10px; 
-                color: #1C396C; 
-                font-family: 'Avenir', monospace;
-                margin-bottom: 20;
-            ">
-                <strong>{len(f_df)} records match your filters.</strong>
-            </div>
-            """, 
-            unsafe_allow_html=True
-        )
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        if f_df.empty or not selected_groups:
-            st.warning("No data matches the selected filters or no Grouping selected.")
-        else:
-            # --- METRICS ---
-            m1, m2, m3 = st.columns(3)
-            total_p = int(f_df[ALL_DEBRIS_ITEMS].sum().sum())
-            m1.metric("EXPEDITIONS", len(f_df))
-            m2.metric("TOTAL PIECES", f"{total_p:,}")
-            m3.metric("AVG PIECES", int(total_p / len(f_df)) if len(f_df) > 0 else 0)
-
-            # --- TABS ---
-            tab_main, tab_sub = st.tabs(["TOTAL COLLECTIONS", "SUBCATEGORY BREAKDOWNS"])
-
-            with tab_main:
-                st.subheader("PROPORTIONAL MATERIAL TYPE")
-                
-                summary_list = []
-                for cat, items in DEBRIS_GROUPS.items():
-                    temp = f_df.groupby(selected_groups)[items].sum().sum(axis=1).reset_index(name="Count")
-                    temp['Material'] = cat
-                    summary_list.append(temp)
-                
-                plot_df = pd.concat(summary_list, ignore_index=True)
-                
-                if plot_df['Count'].sum() > 0:
-                    plot_df['X_Axis'] = plot_df[selected_groups].astype(str).agg(' | '.join, axis=1)
-
-                    fig_stack = px.bar(
-                        plot_df, x='X_Axis', y='Count', color='Material',
-                        template="simple_white",
-                        color_discrete_sequence=ROZALIA_PALETTE
-                    )
-                    
-                    fig_stack.update_layout(
-                        barmode='stack', barnorm='percent',
-                        font_family="Avenir", 
-                        yaxis_title="PROPORTION (%)", 
-                        xaxis_title=" | ".join(selected_groups).upper(),
-                        xaxis={'type': 'category'}
-                    )
-                    
-                    fig_stack.update_traces(
-                        hovertemplate="<b>%{fullData.name}</b><br>Total: %{customdata[0]} pieces<br>Share: %{y:.1f}%<extra></extra>",
-                        customdata=plot_df[['Count']]
-                    )
-                    st.plotly_chart(fig_stack, use_container_width=True)
-                else:
-                    st.info("No debris data recorded for the current selection.")
-
-            with tab_sub:
-                st.subheader("SPECIFIC ITEM BREAKDOWNS")
-                target_cat = st.selectbox("CHOOSE A CATEGORY TO DRILL DOWN:", options=list(DEBRIS_GROUPS.keys()))
-                
-                sub_items = DEBRIS_GROUPS[target_cat]
-                if f_df[sub_items].sum().sum() == 0:
-                    st.warning(f"No {target_cat} items found for this selection.")
-                else:
-                    sub_plot_data = []
-                    for item in sub_items:
-                        temp = f_df.groupby(selected_groups)[item].sum().reset_index(name="Count")
-                        temp['Item'] = item
-                        sub_plot_data.append(temp)
-                    
-                    drill_df = pd.concat(sub_plot_data, ignore_index=True)
-                    drill_df['X_Axis'] = drill_df[selected_groups].astype(str).agg(' | '.join, axis=1)
-
-                    chart_type = st.radio("CHART TYPE:", ["Stacked Bar", "Pie Chart"], horizontal=True)
-
-                    if chart_type == "Pie Chart":
-                        pie_data = drill_df.groupby('Item')['Count'].sum().reset_index()
-                        fig_sub = px.pie(pie_data, values='Count', names='Item',
-                                         hole=0.4, color_discrete_sequence=ROZALIA_PALETTE)
-                        fig_sub.update_traces(
-                            textinfo='percent+label',
-                            hovertemplate="<b>%{label}</b><br>Total: %{value} pieces<br>%{percent}<extra></extra>"
-                        )
-                    else:
-                        fig_sub = px.bar(drill_df, x='X_Axis', y='Count', color='Item',
-                                         template="simple_white", color_discrete_sequence=ROZALIA_PALETTE)
-                        fig_sub.update_layout(barmode='stack', barnorm='percent', yaxis_title="PROPORTION (%)", xaxis={'type': 'category'})
-                        fig_sub.update_traces(
-                            hovertemplate="<b>%{fullData.name}</b><br>Total: %{customdata[0]} pieces<br>Share: %{y:.1f}%<extra></extra>",
-                            customdata=drill_df[['Count']]
-                        )
-                    
-                    fig_sub.update_layout(font_family="Avenir")
-                    st.plotly_chart(fig_sub, use_container_width=True)
-
-    # --- SECTION: NEW ENTRY ---
-    elif page == "New Entry":
+    # --- SECTION 1: NEW ENTRY (Default Landing Page) ---
+    if page == "New Entry":
         st.title("DATA ENTRY FORM")
         with st.form("entry_form", clear_on_submit=True):
             st.subheader("METADATA")
@@ -260,10 +119,10 @@ else:
                     st.success("Log Entry Committed Successfully.")
                     st.rerun()
 
-    # --- SECTION: HISTORY ---
+    # --- SECTION 2: HISTORY ---
     elif page == "History":
-        st.title("CLEANUP ARCHIVE")
-        hist_df = pd.read_csv(DB_FILE, low_memory=False)
+        st.title("CLEANUP DATA ARCHIVE")
+        hist_df = df.copy()
         hist_df['Sort_Date'] = pd.to_datetime(hist_df['Date'], errors='coerce')
         hist_df = hist_df.sort_values(by='Sort_Date', ascending=False)
         
@@ -272,8 +131,146 @@ else:
             hist_df = hist_df[hist_df['Location'].astype(str).str.contains(search_q, case=False, na=False) | 
                               hist_df['City'].astype(str).str.contains(search_q, case=False, na=False)]
 
-        display_cols = [c for c in hist_df.columns if c not in ['Year', 'Month', 'Sort_Date']]
+        display_cols = [c for c in hist_df.columns if c not in ['Sort_Date']]
         st.markdown(f"**RECORD COUNT:** {len(hist_df)}")
         st.dataframe(hist_df[display_cols], use_container_width=True)
         
-        st.download_button(label="EXPORT ARCHIVE (CSV)", data=hist_df[display_cols].to_csv(index=False), file_name="rozalia_master_archive.csv", mime="text/csv")
+        st.download_button(
+            label="EXPORT ARCHIVE (CSV)", 
+            data=hist_df[display_cols].to_csv(index=False), 
+            file_name="rozalia_master_archive.csv", 
+            mime="text/csv"
+        )
+
+    # --- SECTION 3: DASHBOARD ---
+    elif page == "Dashboard":
+        st.title("DATA DASHBOARD")
+
+        # Prep DataFrame for filtering
+        f_df = df.copy()
+        f_df['Date_Converted'] = pd.to_datetime(f_df['Date'], errors='coerce')
+        f_df['Year'] = f_df['Date_Converted'].dt.year.fillna("Unknown").astype(str)
+        f_df['Month'] = f_df['Date_Converted'].dt.strftime('%B').fillna("Unknown")
+
+        # --- STEP 1: FILTER DATA (Full Width Grid) ---
+        st.markdown("### DATA CONTROLS")
+        st.markdown("**STEP 1: FILTER DATA**")
+        
+        # 4-column grid for filters
+        r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
+        r2_c1, r2_c2, r2_c3, r2_c4 = st.columns(4)
+        r3_c1, r3_c2, r3_c3, r3_c4 = st.columns(4)
+
+        # Full original filter list
+        filter_mapping = [
+            ("Year", "Year", r1_c1), ("Month", "Month", r1_c2), 
+            ("State", "State", r1_c3), ("City", "City", r1_c4),
+            ("Type of cleanup", "Type of cleanup", r2_c1), ("Type of location", "Type of location", r2_c2),
+            ("Recent events", "Recent events", r2_c3), ("Weather", "Weather", r2_c4),
+            ("Tide", "Tide", r3_c1), ("Flow", "Flow", r3_c2), 
+            ("Recent weather", "Recent weather", r3_c3)
+        ]
+
+        for label, col_name, slot in filter_mapping:
+            if col_name in f_df.columns:
+                options = sorted(f_df[col_name].unique().astype(str))
+                selected = slot.multiselect(f"SELECT {label.upper()}", options=options)
+                if selected:
+                    f_df = f_df[f_df[col_name].astype(str).isin(selected)]
+
+        # --- STEP 2: VIEW DIMENSIONS (Stacked Below) ---
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("**STEP 2: VIEW DIMENSIONS**")
+        group_options = ["Year", "State", "Type of cleanup", "Type of location", "Weather"]
+        selected_groups = st.multiselect("GROUP DATA BY:", options=group_options, default=["Year"])
+
+        # Record Count Display
+        st.markdown(f"""
+            <div style="padding: 10px 0px; color: #002b36; font-family: 'Avenir', sans-serif; margin-bottom: 50px;">
+                <span style="font-size: 1.2rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                    {len(f_df):,} RECORDS MATCH YOUR FILTERS
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
+
+        if f_df.empty or not selected_groups:
+            st.warning("No data matches the selected filters or no Grouping selected.")
+        else:
+            # --- METRICS ---
+            m1, m2, m3 = st.columns(3)
+            total_p = int(f_df[ALL_DEBRIS_ITEMS].sum().sum())
+            m1.metric("EXPEDITIONS", len(f_df))
+            m2.metric("TOTAL PIECES", f"{total_p:,}")
+            m3.metric("AVG PIECES", int(total_p / len(f_df)) if len(f_df) > 0 else 0)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # --- TABS ---
+            tab_main, tab_sub = st.tabs(["TOTAL COLLECTIONS", "SUBCATEGORY BREAKDOWNS"])
+
+            with tab_main:
+                st.subheader("MATERIAL TYPE")
+                summary_list = []
+                for cat, items in DEBRIS_GROUPS.items():
+                    temp = f_df.groupby(selected_groups)[items].sum().sum(axis=1).reset_index(name="Count")
+                    temp['Material'] = cat
+                    summary_list.append(temp)
+                
+                plot_df = pd.concat(summary_list, ignore_index=True)
+                
+                if plot_df['Count'].sum() > 0:
+                    plot_df['X_Axis'] = plot_df[selected_groups].astype(str).agg(' | '.join, axis=1)
+                    
+                    fig_stack = px.bar(
+                        plot_df, x='X_Axis', y='Count', color='Material',
+                        template="simple_white",
+                        color_discrete_sequence=ROZALIA_PALETTE,
+                        barmode='stack'
+                    )
+                    
+                    fig_stack.update_layout(
+                        barnorm='percent',
+                        font_family="Avenir", 
+                        yaxis_title="PROPORTION (%)", 
+                        xaxis_title=None,
+                        xaxis={'type': 'category'}
+                    )
+                    
+                    fig_stack.update_traces(
+                        hovertemplate="<b>%{fullData.name}</b><br>Total: %{customdata[0]:,} pieces<br>Share: %{y:.1f}%<extra></extra>",
+                        customdata=plot_df[['Count']]
+                    )
+                    st.plotly_chart(fig_stack, use_container_width=True)
+                else:
+                    st.info("No debris data recorded for the current selection.")
+
+            with tab_sub:
+                st.subheader("SUBCATEGORY BREAKDOWNS")
+                target_cat = st.selectbox("CHOOSE A CATEGORY TO DRILL DOWN:", options=list(DEBRIS_GROUPS.keys()))
+                
+                sub_items = DEBRIS_GROUPS[target_cat]
+                if f_df[sub_items].sum().sum() == 0:
+                    st.warning(f"No {target_cat} items found for this selection.")
+                else:
+                    sub_plot_data = []
+                    for item in sub_items:
+                        temp = f_df.groupby(selected_groups)[item].sum().reset_index(name="Count")
+                        temp['Item'] = item
+                        sub_plot_data.append(temp)
+                    
+                    drill_df = pd.concat(sub_plot_data, ignore_index=True)
+                    drill_df['X_Axis'] = drill_df[selected_groups].astype(str).agg(' | '.join, axis=1)
+
+                    chart_type = st.radio("CHART TYPE:", ["Stacked Bar", "Pie Chart"], horizontal=True)
+
+                    if chart_type == "Pie Chart":
+                        pie_data = drill_df.groupby('Item')['Count'].sum().reset_index()
+                        fig_sub = px.pie(pie_data, values='Count', names='Item',
+                                         hole=0.4, color_discrete_sequence=ROZALIA_PALETTE)
+                    else:
+                        fig_sub = px.bar(drill_df, x='X_Axis', y='Count', color='Item',
+                                         template="simple_white", color_discrete_sequence=ROZALIA_PALETTE)
+                        fig_sub.update_layout(barnorm='percent', barmode='stack', yaxis_title="PROPORTION (%)", xaxis={'type': 'category'})
+                    
+                    fig_sub.update_layout(font_family="Avenir")
+                    st.plotly_chart(fig_sub, use_container_width=True)

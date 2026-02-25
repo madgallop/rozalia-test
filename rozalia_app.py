@@ -9,76 +9,88 @@ from config import DEBRIS_GROUPS, METADATA_FIELDS, DROPDOWN_OPTIONS
 DB_FILE = "master_data.csv"
 ALL_DEBRIS_ITEMS = [item for sublist in DEBRIS_GROUPS.values() for item in sublist]
 
-# Your custom categorical palette
-ROZALIA_PALETTE = [
-    "#7BB3CC", # Plastic
-    "#E8A85D", # Wood/Microplastics
-    "#92AD94", # Fibers/Sage
-    "#A4C3B2", # Glass
-    "#BC6C25", # Rubber
-    "#8D99AE", # Metal
-    "#D4A373", # Bio-debris
-    "#788794", # Cloth/Fabric (Toned down)
-    "#E9EDC9"  # Other
-]
+ROZALIA_PALETTE = ["#7BB3CC", "#E8A85D", "#92AD94", "#A4C3B2", "#BC6C25", "#8D99AE", "#D4A373", "#788794", "#E9EDC9"]
 
 def load_and_sync_data():
-    """Load master dataset and align with configuration schema."""
     if not os.path.exists(DB_FILE):
         return pd.DataFrame()
     
     df = pd.read_csv(DB_FILE, low_memory=False)
     
-    # 1. Standardize Dates
+    # 1. Standardize Dates & remove timestamps
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-    
-    # 2. Fix the Categories (The "No Options" Fix)
-    # These columns MUST be strings so the dropdowns can show them
-    categorical_fields = [
-        'Year', 'Month', 'State', 'City', 'Type of cleanup', 
-        'Type of location', 'Weather', 'Recent weather', 
-        'Tide', 'Flow', 'Recent events'
-    ]
-    
-    for col in categorical_fields:
-        if col in df.columns:
-            # Replace empty/NaN with 'Unknown'
-            df[col] = df[col].fillna("Unknown").astype(str).replace(["nan", ""], "Unknown")
-        else:
-            # If the column is missing entirely, create it
-            df[col] = "Unknown"
 
-    # 3. Fix the Numbers (Debris and Stats)
-    # This ensures columns like "Total weight (lb)" don't break the charts
-    numeric_fields = ALL_DEBRIS_ITEMS + [
-        'Distance cleaned (miles)', 'Duration (hrs)', 
-        'Wind (knots) 0 if none', 'Total weight (lb)', '# of participants'
-    ]
+    # 2. DROP Unwanted Columns
+    cols_to_drop = ['Year', 'Month', 'Day', 'Latitude', 'Longitude']
+    df.drop(columns=[c for c in cols_to_drop if c in df.columns], inplace=True)
     
-    for col in numeric_fields:
+    # 3. FIX WIND DUPLICATE
+    if 'Weather (wind knots)' in df.columns:
+        if 'Wind (knots) 0 if none' in df.columns:
+            df['Wind (knots) 0 if none'] = df['Wind (knots) 0 if none'].replace(0, pd.NA).fillna(df['Weather (wind knots)']).fillna(0)
+        else:
+            df['Wind (knots) 0 if none'] = df['Weather (wind knots)']
+        df.drop(columns=['Weather (wind knots)'], inplace=True)
+
+    # 4. SAFE RENAME for Tide and Events
+    rename_map = {"Tide": "State of Tide", "Recent events": "Recent events (human)"}
+    for old_name, new_name in rename_map.items():
+        if old_name in df.columns:
+            if new_name not in df.columns:
+                df.rename(columns={old_name: new_name}, inplace=True)
+            else:
+                df.drop(columns=[old_name], inplace=True)
+    
+    # 5. Define Column Groups for Reordering
+    core_info = ['Date', 'Location', 'City', 'State']
+    
+    qualitative_meta = [
+        'Type of cleanup', 'Type of location', 'Weather', 'Wind (knots) 0 if none',
+        'Recent weather', 'State of Tide', 'Flow', 'Recent events (human)',
+        'Distance cleaned (miles)', 'Duration (hrs)', 'Start time', 'End time',
+        '# of participants', 'Total weight (lb)', 'Unusual items', 'Notes/comments'
+    ]
+
+    # 6. Apply formatting and fill missing columns
+    all_meta = core_info + qualitative_meta
+    for col in all_meta:
+        if col not in df.columns:
+            df[col] = 0 if any(x in col for x in ['lb', 'miles', 'hrs', '#', 'knots']) else "Unknown"
+        elif col in ['State', 'City', 'Type of cleanup', 'Type of location', 'Weather', 'Recent weather', 'State of Tide', 'Flow', 'Recent events (human)']:
+            df[col] = df[col].fillna("Unknown").astype(str).replace(["nan", ""], "Unknown")
+        elif col in ['Distance cleaned (miles)', 'Duration (hrs)', 'Wind (knots) 0 if none', 'Total weight (lb)', '# of participants']:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+    for col in ALL_DEBRIS_ITEMS:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         else:
             df[col] = 0
-            
+
+    # 7. FINAL REORDERING
+    existing_core = [c for c in core_info if c in df.columns]
+    existing_qual = [c for c in qualitative_meta if c in df.columns]
+    existing_debris = [c for c in ALL_DEBRIS_ITEMS if c in df.columns]
+    
+    remaining_cols = [c for c in df.columns if c not in existing_core + existing_qual + existing_debris]
+    
+    new_column_order = existing_core + existing_qual + existing_debris + remaining_cols
+    df = df[new_column_order]
+
+    # 8. Clean up Date display (removes 00:00:00)
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')    
     return df
 
-# --- UI STYLING ---
 st.set_page_config(page_title="Rozalia Archive", layout="wide")
-
-# Data Refresh
 df = load_and_sync_data()
 
 if df.empty:
     st.error("Critical Error: Master Database File Missing or Corrupted.")
 else:
-    # --- NAVIGATION ---
     st.sidebar.title("ROZALIA PROJECT")
-    st.sidebar.markdown("---")
-    # Default order: New Entry -> History -> Dashboard
     page = st.sidebar.radio("SECTIONS", ["New Entry", "History", "Dashboard"])
 
-    # --- SECTION 1: NEW ENTRY (Default Landing Page) ---
+    # --- SECTION 1: NEW ENTRY ---
     if page == "New Entry":
         st.title("DATA ENTRY FORM")
         with st.form("entry_form", clear_on_submit=True):
@@ -91,7 +103,7 @@ else:
                     meta_in[field] = c.selectbox(field.upper(), options=DROPDOWN_OPTIONS[field], index=None)
                 elif "Date" in field:
                     meta_in[field] = c.date_input(field.upper(), date.today())
-                elif any(x in field for x in ["Latitude", "Longitude", "Total weight", "Distance", "Duration"]):
+                elif any(x in field for x in ["Latitude", "Longitude", "Total weight", "Distance", "Duration", "#"]):
                     meta_in[field] = c.number_input(field.upper(), value=0.0)
                 else:
                     meta_in[field] = c.text_input(field.upper())
@@ -111,38 +123,94 @@ else:
                 if not meta_in.get("Location") or not meta_in.get("City"):
                     st.warning("Incomplete Data: Location and City fields are mandatory.")
                 else:
+                    # 1. Load existing data
                     current_df = load_and_sync_data()
+                    
+                    # 2. Prepare the new row
                     new_row = {**meta_in, **counts}
-                    new_row["Date"] = meta_in["Date"].strftime("%Y-%m-%d 00:00:00")
-                    updated_df = pd.concat([current_df, pd.DataFrame([new_row])], ignore_index=True)
+                    new_row["Date"] = pd.to_datetime(meta_in["Date"])
+
+                    # 3. CALCULATE SUBTOTALS ON THE FLY
+                    # This maps your internal groups to your specific CSV Column Names
+                    
+                    # Plastic Total
+                    new_row["Plastic Total"] = sum(counts.get(i, 0) for i in DEBRIS_GROUPS.get("Plastic", []))
+                    
+                    # PPE Total
+                    new_row["PPE Total"] = sum(counts.get(i, 0) for i in DEBRIS_GROUPS.get("PPE", []))
+                    
+                    # Metal Total
+                    new_row["Metal Total"] = sum(counts.get(i, 0) for i in DEBRIS_GROUPS.get("Metal", []))
+                    
+                    # Glass/Rubber Total
+                    gr_items = DEBRIS_GROUPS.get("Glass & Rubber", [])
+                    new_row["Glass/Rubber Total"] = sum(counts.get(i, 0) for i in gr_items)
+                    
+                    # Paper/Cloth Total
+                    pc_items = DEBRIS_GROUPS.get("Paper & Cloth", [])
+                    new_row["Paper/Cloth Total"] = sum(counts.get(i, 0) for i in pc_items)
+                    
+                    # Fishing Debris Total
+                    new_row["Fishing Debris Total"] = sum(counts.get(i, 0) for i in DEBRIS_GROUPS.get("Fishing Debris", []))
+                    
+                    # Micro/Fibers Total
+                    micro_items = DEBRIS_GROUPS.get("Microplastics & Fibers", [])
+                    new_row["Microplastics, Fibers, Fragments Total"] = sum(counts.get(i, 0) for i in micro_items)
+                    
+                    # Foam Total
+                    new_row["Foam Total"] = sum(counts.get(i, 0) for i in DEBRIS_GROUPS.get("Foam", []))
+                    
+                    # Other Total
+                    new_row["Other Total"] = sum(counts.get(i, 0) for i in DEBRIS_GROUPS.get("Other", []))
+
+                    # 4. CALCULATE GRAND TOTAL
+                    # This adds up all the subtotals we just created
+                    totals_to_sum = [
+                        "Plastic Total", "PPE Total", "Metal Total", "Glass/Rubber Total",
+                        "Paper/Cloth Total", "Fishing Debris Total", 
+                        "Microplastics, Fibers, Fragments Total", "Foam Total", "Other Total"
+                    ]
+                    new_row["Total Total"] = sum(new_row[t] for t in totals_to_sum)
+
+                    # 5. Save to CSV
+                    new_df = pd.DataFrame([new_row])
+                    updated_df = pd.concat([current_df, new_df], ignore_index=True)
                     updated_df.to_csv(DB_FILE, index=False)
-                    st.success("Log Entry Committed Successfully.")
+                    
+                    st.success(f"Log Entry Committed! Total Debris: {new_row['Total Total']}")
                     st.rerun()
 
-    # --- SECTION 2: HISTORY ---
+# --- SECTION 2: HISTORY ---
     elif page == "History":
         st.title("CLEANUP DATA ARCHIVE")
         hist_df = df.copy()
-        hist_df['Sort_Date'] = pd.to_datetime(hist_df['Date'], errors='coerce')
-        hist_df = hist_df.sort_values(by='Sort_Date', ascending=False)
+        # Sort by date (latest first)
+        hist_df = hist_df.sort_values(by='Date', ascending=False)
+
+        # FORMAT THE DATE FOR DISPLAY ONLY
+        hist_df['Date'] = hist_df['Date'].dt.strftime('%Y-%m-%d')
         
         search_q = st.text_input("SEARCH BY GEOGRAPHIC LOCATION", "")
         if search_q:
-            hist_df = hist_df[hist_df['Location'].astype(str).str.contains(search_q, case=False, na=False) | 
-                              hist_df['City'].astype(str).str.contains(search_q, case=False, na=False)]
+            # Search across Location, City, and Notes
+            hist_df = hist_df[
+                hist_df['Location'].astype(str).str.contains(search_q, case=False, na=False) | 
+                hist_df['City'].astype(str).str.contains(search_q, case=False, na=False) |
+                hist_df['Notes/comments'].astype(str).str.contains(search_q, case=False, na=False)
+            ]
 
-        display_cols = [c for c in hist_df.columns if c not in ['Sort_Date']]
         st.markdown(f"**RECORD COUNT:** {len(hist_df)}")
-        st.dataframe(hist_df[display_cols], use_container_width=True)
+        st.dataframe(hist_df, use_container_width=True)
         
+        # Download button remains the same
         st.download_button(
             label="EXPORT ARCHIVE (CSV)", 
-            data=hist_df[display_cols].to_csv(index=False), 
+            data=hist_df.to_csv(index=False), 
             file_name="rozalia_master_archive.csv", 
             mime="text/csv"
         )
 
-    # --- SECTION 3: DASHBOARD ---
+# --- SECTION 3: DASHBOARD ---
     elif page == "Dashboard":
         st.title("DATA DASHBOARD")
 
@@ -166,8 +234,8 @@ else:
             ("Year", "Year", r1_c1), ("Month", "Month", r1_c2), 
             ("State", "State", r1_c3), ("City", "City", r1_c4),
             ("Type of cleanup", "Type of cleanup", r2_c1), ("Type of location", "Type of location", r2_c2),
-            ("Recent events", "Recent events", r2_c3), ("Weather", "Weather", r2_c4),
-            ("Tide", "Tide", r3_c1), ("Flow", "Flow", r3_c2), 
+            ("Recent events", "Recent events (human)", r2_c3), ("Weather", "Weather", r2_c4),
+            ("Tide", "State of Tide", r3_c1), ("Flow", "Flow", r3_c2), 
             ("Recent weather", "Recent weather", r3_c3)
         ]
 
@@ -246,7 +314,7 @@ else:
 
             with tab_sub:
                 st.subheader("SUBCATEGORY BREAKDOWNS")
-                target_cat = st.selectbox("CHOOSE A CATEGORY TO DRILL DOWN:", options=list(DEBRIS_GROUPS.keys()))
+                target_cat = st.selectbox("CHOOSE A SUBCATEGORY:", options=list(DEBRIS_GROUPS.keys()))
                 
                 sub_items = DEBRIS_GROUPS[target_cat]
                 if f_df[sub_items].sum().sum() == 0:
@@ -273,4 +341,8 @@ else:
                         fig_sub.update_layout(barnorm='percent', barmode='stack', yaxis_title="PROPORTION (%)", xaxis={'type': 'category'})
                     
                     fig_sub.update_layout(font_family="Avenir")
+                    fig_sub.update_traces(
+                        hovertemplate="<b>%{fullData.name}</b><br>Total: %{customdata[0]:,} pieces<br>Share: %{y:.1f}%<extra></extra>",
+                        customdata=plot_df[['Count']]
+                    )
                     st.plotly_chart(fig_sub, use_container_width=True)

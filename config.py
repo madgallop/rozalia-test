@@ -21,6 +21,7 @@ DEBRIS_GROUPS = {
         "Plastic bags (Zip-loc, etc)", "Straws/stirrers", "Utensils", 
         "Plastic cups/plates", "Plastic take away containers", "Plastic bottle caps", 
         "Plastic lids", "Cigarettes", "Vaping cartidges/pods", "Cigar tips", 
+        "Personal hygiene", "Dental/floss picks", "Tampons/applicators", "Wipes", # Added these
         "Toys", "Balloons", "Lighters", "Shotgun shells/wadding", 
         "Strapping bands", "Zip-ties", "Shipping/packaging", 
         "Plastic sheeting/tape", "Oil/lube bottles", "Bleach/cleaner bottles"

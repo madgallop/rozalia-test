@@ -1,15 +1,20 @@
+#import essential libraries 
 import streamlit as st
 import pandas as pd
 import os
 import plotly.express as px
 from datetime import datetime, date
-from config import DEBRIS_GROUPS, METADATA_FIELDS, DROPDOWN_OPTIONS
+
+# get info from config file
+from config import DEBRIS_GROUPS, METADATA_FIELDS, SUMMARY_TOTALS, DROPDOWN_OPTIONS
 
 # --- SYSTEM CONFIGURATION ---
 DB_FILE = "master_data.csv"
-ALL_DEBRIS_ITEMS = [item for sublist in DEBRIS_GROUPS.values() for item in sublist]
 
 ROZALIA_PALETTE = ["#7BB3CC", "#E8A85D", "#92AD94", "#A4C3B2", "#BC6C25", "#8D99AE", "#D4A373", "#788794", "#E9EDC9"]
+
+ALL_DEBRIS_ITEMS = [item for sublist in DEBRIS_GROUPS.values() for item in sublist]
+
 
 def load_and_sync_data():
     if not os.path.exists(DB_FILE):
@@ -17,71 +22,48 @@ def load_and_sync_data():
     
     df = pd.read_csv(DB_FILE, low_memory=False)
     
-    # 1. Standardize Dates & remove timestamps
+    # 1. Standardize dates & remove timestamps
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
 
-    # 2. DROP Unwanted Columns
-    cols_to_drop = ['Year', 'Month', 'Day', 'Latitude', 'Longitude']
+    # 2. Drop unwanted columns
+    cols_to_drop = ['Year', 'Month', 'Day']
     df.drop(columns=[c for c in cols_to_drop if c in df.columns], inplace=True)
     
-    # 3. FIX WIND DUPLICATE
-    if 'Weather (wind knots)' in df.columns:
-        if 'Wind (knots) 0 if none' in df.columns:
-            df['Wind (knots) 0 if none'] = df['Wind (knots) 0 if none'].replace(0, pd.NA).fillna(df['Weather (wind knots)']).fillna(0)
-        else:
-            df['Wind (knots) 0 if none'] = df['Weather (wind knots)']
-        df.drop(columns=['Weather (wind knots)'], inplace=True)
-
-    # 4. SAFE RENAME for Tide and Events
-    rename_map = {"Tide": "Tide", "Recent events (human)": "Recent events (human)"}
-    for old_name, new_name in rename_map.items():
-        if old_name in df.columns:
-            if new_name not in df.columns:
-                df.rename(columns={old_name: new_name}, inplace=True)
-            else:
-                df.drop(columns=[old_name], inplace=True)
-    
-    # 5. Define Column Groups for Reordering
-    core_info = ['Date', 'Location', 'City', 'State']
-    
-    qualitative_meta = [
-        'Type of cleanup', 'Type of location', 'Weather', 'Wind (knots) 0 if none',
-        'Recent weather', 'Tide', 'Flow', 'Recent events (human)',
-        'Distance cleaned (miles)', 'Duration (hrs)', 'Start time', 'End time',
-        '# of participants', 'Total weight (lb)', 'Unusual items', 'Notes/comments'
-    ]
-
-    # 6. Apply formatting and fill missing columns
-    all_meta = core_info + qualitative_meta
-    for col in all_meta:
+    # 3. Ensure all metadata columns exist (default fill "Unknown" or 0). prevents crashing if new columns added in config.
+    for col in METADATA_FIELDS:
         if col not in df.columns:
-            df[col] = 0 if any(x in col for x in ['lb', 'miles', 'hrs', '#', 'knots']) else "Unknown"
-        elif col in ['State', 'City', 'Type of cleanup', 'Type of location', 'Weather', 'Recent weather', 'Tide', 'Flow', 'Recent events (human)']:
-            df[col] = df[col].fillna("Unknown").astype(str).replace(["nan", ""], "Unknown")
-        elif col in ['Distance cleaned (miles)', 'Duration (hrs)', 'Wind (knots) 0 if none', 'Total weight (lb)', '# of participants']:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            if any(unit in col.lower() for unit in ['lb', 'miles', 'hrs', '#', 'knots']):
+                df[col] = 0
+            else:
+                df[col] = "Unknown"
 
+    # 4. Ensure all debris count columns exist (default fill to 0)
     for col in ALL_DEBRIS_ITEMS:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        else:
+        if col not in df.columns:
             df[col] = 0
+        else:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0) #needs to be 0 and not NaN for calculating totals 
+
+    # 5. Ensure all summary total columns exist (default to 0)
+    # This is where we use the new SUMMARY_TOTALS list from config
+    for col in SUMMARY_TOTALS:
+        if col not in df.columns:
+            df[col] = 0
+        else:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0) #needs to be 0 and not NaN for calculating totals 
 
     # 7. FINAL REORDERING
-    existing_core = [c for c in core_info if c in df.columns]
-    existing_qual = [c for c in qualitative_meta if c in df.columns]
-    existing_debris = [c for c in ALL_DEBRIS_ITEMS if c in df.columns]
-    
-    remaining_cols = [c for c in df.columns if c not in existing_core + existing_qual + existing_debris]
-    
-    new_column_order = existing_core + existing_qual + existing_debris + remaining_cols
+    existing_meta = [c for c in METADATA_FIELDS if c in df.columns] 
+    existing_debris = [c for c in ALL_DEBRIS_ITEMS if c in df.columns]   
+    existing_totals = [c for c in SUMMARY_TOTALS if c in df.columns]
+    remaining = [c for c in df.columns if c not in existing_meta + existing_debris + existing_totals]
+
+    new_column_order = existing_meta + existing_debris + existing_totals + remaining
     df = df[new_column_order]
 
-    # 8. Clean up Date display (removes 00:00:00)
-    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')    
     return df
 
-st.set_page_config(page_title="Rozalia Archive", layout="wide")
+st.set_page_config(page_title="Rozalia Data Dashboard", layout="wide")
 df = load_and_sync_data()
 
 if df.empty:

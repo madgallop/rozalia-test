@@ -1,8 +1,6 @@
 # config.py
 
-# This is your "Source of Truth." 
-# If you add a new item to Excel, just add the header name to the list below.
-# config.py
+# When new categories are added in Excel, just add the header name to the list below.
 
 METADATA_FIELDS = [
     "Date", "Location", "City", "State", 
@@ -59,6 +57,12 @@ DEBRIS_GROUPS = {
         "Home & garden items", "Car/boat parts", "Other", "Unidentified pieces"
     ]
 }
+
+SUMMARY_TOTALS = [
+    "Total Plastic", "Total Foam", "Total PPE", "Total Metal", 
+    "Total Glass & Rubber", "Total Paper & Cloth", 
+    "Total Fishing Debris", "Total Microplastics", "Grand Total"
+]
 
 DROPDOWN_OPTIONS = {
     "State": ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "Can", "Other"],

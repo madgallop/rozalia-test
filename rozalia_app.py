@@ -115,6 +115,7 @@ else:
             REQUIRED_FIELDS = ["Date", "Location", "City", "State"]
 
             for i, field in enumerate(METADATA_FIELDS):
+                if field == "Outlier": continue
                 c = m_cols[i % 3]
                 display_label = field.upper().replace("#", "NUMBER")
                 if field in REQUIRED_FIELDS:

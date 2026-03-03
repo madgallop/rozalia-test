@@ -467,3 +467,24 @@ else:
                     
                     fig_sub.update_layout(xaxis_title=None, font_family="Avenir")
                     st.plotly_chart(fig_sub, use_container_width=True)
+
+                    # --- STEP 3: DATA PREVIEW ---
+            st.markdown("---")
+            with st.expander("View tabular data for this selection"):
+                st.write(f"Showing the **{len(f_df)}** records used to generate the charts above.")
+                
+                # Format the date for display just like you did in History
+                preview_df = f_df.copy()
+                if 'Date' in preview_df.columns:
+                    preview_df['Date'] = preview_df['Date'].dt.strftime('%Y-%m-%d').fillna("Unknown")
+                
+                # Display the dataframe
+                st.dataframe(preview_df, use_container_width=True)
+                
+                # Allow them to download just this filtered slice
+                st.download_button(
+                    label="DOWNLOAD FILTERED CSV",
+                    data=preview_df.to_csv(index=False).encode('utf-8-sig'),
+                    file_name="filtered_cleanup_data.csv",
+                    mime="text/csv"
+                )

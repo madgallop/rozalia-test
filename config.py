@@ -48,10 +48,11 @@ DEBRIS_GROUPS = {
         "Line/net fiber: LARGE >30mm", "Resin Pellets", "BBs/beads"
     ],
     "Foam": [
-        "Foam cups/plates", "Foam take away containers", "Micro foam 0-5mm", 
-        "SMALL foam 5-30mm", "LARGE foam >30mm", "Dock Foam (any size)", "Foam Toys",
-        "Foam Toys (water/pool)", "Foam Shipping/packaging", "Foam Buoys", "Foam Coolers",
-        "Pink Construction Foam", "Blue Construction Foam", "Construction Foam w Foil",	"Foam Meat Trays"
+        "Foam cups/plates", "Foam take away containers", "Foam Toys",
+        "Foam Toys (water/pool)", "Foam Shipping/packaging", "Foam Buoys",
+        "Foam Coolers", "Dock Foam (any size)",  "Pink Construction Foam",
+         "Blue Construction Foam", "Construction Foam w Foil", 'MICRO foam <5mm',
+        "SMALL foam 5-30mm", "LARGE foam >30mm", "Foam Meat Trays"
     ],
     "Other": [
         "Home & garden items", "Car/boat parts", "Other", "Unidentified pieces"

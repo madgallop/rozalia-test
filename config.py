@@ -8,7 +8,7 @@ METADATA_FIELDS = [
     "Type of cleanup", "Type of location", 
     "Distance cleaned (miles)", "Duration (hrs)", 
     "Start time", "End time", "Weather", 
-    "Wind (knots)", "Recent weather", 
+    "Wind", "Recent weather", 
     "Tide", "Flow", "Recent events", "Total weight (lb)",
     "# of participants", "Unusual items", "Notes/comments"
 ]
@@ -72,6 +72,7 @@ DROPDOWN_OPTIONS = {
     "Type of cleanup": ["Shoreline (hands)", "Surface (hands)", "Underwater (hands)", "Dip net", "Neuston net", "ROV", "Sediment container", "Sediment grab", "Other"],
     "Type of location": ["Sandy Beach", "Rocky Beach", "Private Dock", "Marina", "Park", "Open Water", "River", "Other"],
     "Weather": ["Clear/Sunny", "Rain", "Cloudy", "Windy", "Foggy", "Other"],
+    "Wind" : ["Calm (<1 knots / < 1 mph)", "Light Air (1-3 knots / 1-3 mph)", "Light Breeze (4-6 knots / 4-7 mph)", "Gentle Breeze (7-10 knots / 8-12 mph)", "Moderate Breeze (11-16 knots / 13-18 mph)", "Fresh Breeze (17-21 knots / 19-24 mph)", "Strong Breeze (22-27 knots / 25-31 mph)", "Near Gale (28-33 knots / 32-38 mph)", "Gale (34-40 knots / 39-46 mph)", "Strong Gale (41-47 knots / < 47-54 mph)", "Storm (48-55 knots / 55-63 mph)", "Violent Storm (56-63 knots / 64-72 mph)","Hurricane (> 64 knots / >73 mph)"],
     "Recent weather": ["Wind Event", "Rain Event", "Storm Event", "Draught", "None", "Irene", "Other"],
     "Tide": ["High", "Low", "Mid", "Other", "N/A"],
     "Flow": ["Ebbing", "Flooding", "Slack", "Other", "N/A"],

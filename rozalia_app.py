@@ -156,7 +156,7 @@ else:
             st.info("**Done entering in your cleanup?**")
             
             submit_col1, submit_col2 = st.columns([1, 3])
-            submitted = submit_col1.form_submit_button("COMMIT TO MASTER LOG")
+            submitted = submit_col1.form_submit_button("SUBMIT DATA")
 
             st.markdown("*Navigate to History to view data*")
 

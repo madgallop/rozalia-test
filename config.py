@@ -3,7 +3,7 @@
 # When new categories are added in Excel, just add the header name to the list below.
 
 METADATA_FIELDS = [
-    "Date", "Location",  "Organization", "City", "State", "Country",
+    "Date", "Location",  "Organization/Individual", "City", "State", "Country",
     "Type of cleanup", "Specify Other (Type of cleanup)", "Type of location", 
     "Distance cleaned", "Units (Distance cleaned)", "Duration (hrs)", 
     "Start time", "End time", "Weather", 

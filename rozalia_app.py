@@ -129,7 +129,7 @@ else:
                     meta_in[field] = c.selectbox(display_label, options=DROPDOWN_OPTIONS[field], index=None, key=f_key)
                 elif "Date" in field:
                     meta_in[field] = c.date_input(display_label, date.today(), key=f_key)
-                elif any(x in field for x in ["Total weight", "Distance", "Duration"]):
+                elif field in ["Total weight", "Distance", "Duration"]:
                     meta_in[field] = c.number_input(display_label, min_value=0.0, step=0.1, value=None, placeholder="0.0", key=f_key)
                 elif "Participants" in field or "#" in field:
                     meta_in[field] = c.number_input(display_label, min_value=0, step=1, value=None, placeholder="0", key=f_key)

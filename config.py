@@ -54,7 +54,7 @@ DEBRIS_GROUPS = {
         "SMALL foam 5-30mm", "LARGE foam >30mm", "Foam Meat Trays"
     ],
     "Other": [
-        "Home & garden items", "Car/boat parts", "Other", "Unidentified pieces"
+        "Home & garden items", "Car/boat parts", "Other", "Other Details", "Unidentified pieces"
     ]
 }
 

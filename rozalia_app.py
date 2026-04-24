@@ -324,50 +324,50 @@ else:
         
         # ROW 1: Geography & Time
         # State
-        state_opts = sorted(f_df["State"].unique().astype(str))
+        state_opts = sorted(f_df["State"].dropna().unique().astype(str))
         sel_states = r1_c1.multiselect("SELECT STATE", options=state_opts)
         if sel_states:
             f_df = f_df[f_df["State"].isin(sel_states)]
 
         # City (The Parent)
-        city_opts = sorted(f_df["City"].unique().astype(str))
+        city_opts = sorted(f_df["City"].dropna().unique().astype(str))
         sel_cities = r1_c2.multiselect("SELECT CITY", options=city_opts)
         if sel_cities:
             f_df = f_df[f_df["City"].isin(sel_cities)]
 
         # Location (The Child - filtered by City)
-        loc_opts = sorted(f_df["Location"].unique().astype(str))
+        loc_opts = sorted(f_df["Location"].dropna().unique().astype(str))
         sel_locs = r1_c3.multiselect("SELECT LOCATION", options=loc_opts)
         if sel_locs:
             f_df = f_df[f_df["Location"].isin(sel_locs)]
 
         # Year
-        year_opts = sorted(f_df["Year"].unique())
+        year_opts = sorted(f_df["Year"].dropna().unique())
         sel_years = r1_c4.multiselect("SELECT YEAR", options=year_opts)
         if sel_years:
             f_df = f_df[f_df["Year"].isin(sel_years)]
 
         # ROW 2: Cleanup Details & Weather
         # Month
-        month_opts = sorted(f_df["Month"].unique())
+        month_opts = sorted(f_df["Month"].dropna().unique())
         sel_months = r2_c1.multiselect("SELECT MONTH", options=month_opts)
         if sel_months:
             f_df = f_df[f_df["Month"].isin(sel_months)]
 
         # Type of cleanup
-        cleanup_opts = sorted(f_df["Type of cleanup"].unique().astype(str))
+        cleanup_opts = sorted(f_df["Type of cleanup"].dropna().unique().astype(str))
         sel_cleanup = r2_c2.multiselect("SELECT TYPE OF CLEANUP", options=cleanup_opts)
         if sel_cleanup:
             f_df = f_df[f_df["Type of cleanup"].isin(sel_cleanup)]
 
         # Type of location
-        type_loc_opts = sorted(f_df["Type of location"].unique().astype(str))
+        type_loc_opts = sorted(f_df["Type of location"].dropna().unique().astype(str))
         sel_type_loc = r2_c3.multiselect("SELECT TYPE OF LOCATION", options=type_loc_opts)
         if sel_type_loc:
             f_df = f_df[f_df["Type of location"].isin(sel_type_loc)]
 
         # Weather
-        weather_opts = sorted(f_df["Current Weather"].unique().astype(str))
+        weather_opts = sorted(f_df["Current Weather"].dropna().unique().astype(str))
         sel_weather = r2_c4.multiselect("SELECT WEATHER", options=weather_opts)
         if sel_weather:
             f_df = f_df[f_df["Current Weather"].isin(sel_weather)]

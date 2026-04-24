@@ -321,6 +321,7 @@ else:
         # We define the grid exactly like your original, but handle City/Location specially
         r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
         r2_c1, r2_c2, r2_c3, r2_c4 = st.columns(4)
+        r3_c1, r3_c2, r3_c3, r3_c4 = st.columns(4)
         
         # ROW 1: Geography & Time
         # State
@@ -372,6 +373,11 @@ else:
         if sel_weather:
             f_df = f_df[f_df["Current Weather"].isin(sel_weather)]
 
+        # Organization
+        org_opts = sorted(f_df["Organization/Individual"].dropna().unique().astype(str))
+        sel_orgs = r3_c1.multiselect("SELECT ORGANIZATION/INDIVIDUAL", options=org_opts)
+        if sel_orgs:
+            f_df = f_df[f_df["Organization/Individual"].isin(sel_orgs)]
 
         # --- STEP 2: VIEW DIMENSIONS ---
         st.markdown("**STEP 2: GROUP DATA BY**")

@@ -4,9 +4,12 @@ import pandas as pd
 import os
 import plotly.express as px
 from datetime import datetime, date
+from streamlit_gsheets import GSheetsConnection
 
 # get info from config file
 from config import DEBRIS_GROUPS, METADATA_FIELDS, SUMMARY_TOTALS, DROPDOWN_OPTIONS
+
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- SYSTEM CONFIGURATION ---
 DB_FILE = "master_data.csv"
@@ -17,48 +20,66 @@ ALL_DEBRIS_ITEMS = [item for sublist in DEBRIS_GROUPS.values() for item in subli
 
 
 def load_and_sync_data():
-    if not os.path.exists(DB_FILE):
-        return pd.DataFrame()
-    
-    df = pd.read_csv(DB_FILE, low_memory=False, encoding_errors='replace')
+    """
+    Connects to Google Sheets using secrets, pulls the master log, 
+    and ensures all columns exist and are formatted correctly.
+    """
+    try:
+        # 1. Establish the connection to Google Sheets
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        
+        # 2. Read the data using the URL stored in your secrets
+        # ttl="1m" caches data for 60 seconds to improve performance
+        df = conn.read(
+            spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"],
+            ttl="1m"
+        )
 
-    # 2. Drop unwanted columns
-    cols_to_drop = ['Year', 'Month', 'Day']
-    df.drop(columns=[c for c in cols_to_drop if c in df.columns], inplace=True)
-    
-    # 3. Ensure all metadata columns exist (default fill "Unknown" or 0). prevents crashing if new columns added in config.
-    for col in METADATA_FIELDS:
-        if col not in df.columns:
-            if any(unit in col.lower() for unit in ['lb', 'miles', 'hrs', '#', 'knots']):
+        # 3. Handle Empty Sheets
+        if df is None or df.empty:
+            # Return a blank dataframe with the correct structure so the app doesn't crash
+            return pd.DataFrame(columns=METADATA_FIELDS + ALL_DEBRIS_ITEMS + SUMMARY_TOTALS + ["Date"])
+
+        # 4. Data Cleaning: Remove unwanted columns if they exist
+        cols_to_drop = ['Year', 'Month', 'Day']
+        df = df.drop(columns=[c for c in cols_to_drop if c in df.columns])
+        
+        # 5. Metadata Repair: Ensure all expected metadata columns exist
+        for col in METADATA_FIELDS:
+            if col not in df.columns:
                 df[col] = "None"
             else:
-                df[col] = "None"
+                # Fill empty cells in metadata with "None" string
+                df[col] = df[col].fillna("None").astype(str)
 
-    # 4. Ensure all debris count columns exist (default fill to 0)
-    for col in ALL_DEBRIS_ITEMS:
-        if col not in df.columns:
-            df[col] = 0
-        else:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0) #needs to be 0 and not NaN for calculating totals 
+        # 6. Debris & Totals Repair: Ensure count columns exist and are numeric
+        numeric_cols = ALL_DEBRIS_ITEMS + SUMMARY_TOTALS
+        for col in numeric_cols:
+            if col not in df.columns:
+                df[col] = 0
+            else:
+                # Convert to numbers; 'coerce' turns typos into 0
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-    # 5. Ensure all summary total columns exist (default to 0)
-    # This is where we use the new SUMMARY_TOTALS list from config
-    for col in SUMMARY_TOTALS:
-        if col not in df.columns:
-            df[col] = 0
-        else:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0) #needs to be 0 and not NaN for calculating totals 
+        # 7. Date Formatting: Mandatory for the Dashboard filters to work
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        
+        # 8. Final Reordering: Maintain a consistent structure
+        existing_meta = [c for c in METADATA_FIELDS if c in df.columns] 
+        existing_debris = [c for c in ALL_DEBRIS_ITEMS if c in df.columns]   
+        existing_totals = [c for c in SUMMARY_TOTALS if c in df.columns]
+        
+        if "Date" in existing_meta:
+            existing_meta.remove("Date")
+        
+        new_column_order = ["Date"] + existing_meta + existing_debris + existing_totals
+        df = df[new_column_order]
 
-    # 7. FINAL REORDERING
-    existing_meta = [c for c in METADATA_FIELDS if c in df.columns] 
-    existing_debris = [c for c in ALL_DEBRIS_ITEMS if c in df.columns]   
-    existing_totals = [c for c in SUMMARY_TOTALS if c in df.columns]
-    # remaining = [c for c in df.columns if c not in existing_meta + existing_debris + existing_totals]
+        return df
 
-    new_column_order = existing_meta + existing_debris + existing_totals
-    df = df[new_column_order]
-    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-    return df
+    except Exception as e:
+        st.error(f"Error connecting to Google Sheets: {e}")
+        return pd.DataFrame()
 
 st.set_page_config(page_title="Rozalia Data Dashboard", layout="wide")
 df = load_and_sync_data()
@@ -162,33 +183,28 @@ else:
 
 
             if submitted:
-                # 1. Validation Check
+                # 1. Validation Check: Ensure required fields aren't empty
                 missing_fields = [r for r in REQUIRED_FIELDS if not meta_in.get(r)]
                 
                 if missing_fields:
                     st.error(f"⚠️ **Missing required fields:** {', '.join(missing_fields)}")
                 else:
-                    # 2. PREPARE METADATA WITH YOUR SPECIFIC DEFAULTS
-                    # Define which fields get what default
-                    to_unknown = ["Type of cleanup", "Type of location", "Current Weather", "Recent weather", "Tide/Water Level", "Flow Conditions", "Recent events"]
-                    to_none = ["Unusual items", "Notes/Comments", "Start time", "End time"]
-                    to_nodata = ["Total weight", "Distance cleaned", "Duration (hrs)", "# of participants", "Participants"]
-
+                    # 2. PREPARE METADATA
                     cleaned_meta = {}
                     for field, val in meta_in.items():
                         if val is not None and str(val).strip() != "":
                             cleaned_meta[field] = val
-                        #EDIT HERE if you dont want empty metadata fields to default to none 
                         else:
                             cleaned_meta[field] = "None"
 
-                    # 3. PREPARE DEBRIS COUNTS (Fixes the NoneType error!)
-                    # This ensures every item is at least 0 so the sum() function doesn't break
+                    # 3. PREPARE DEBRIS COUNTS
                     cleaned_counts = {k: (v if v is not None else 0) for k, v in counts.items()}
                     
                     # 4. MERGE INTO NEW ROW
                     new_row = {**cleaned_meta, **cleaned_counts}
-                    new_row["Date"] = pd.to_datetime(meta_in["Date"])
+                    
+                    # Format the date properly for Google Sheets (YYYY-MM-DD)
+                    new_row["Date"] = pd.to_datetime(meta_in["Date"]).strftime('%Y-%m-%d')
                     
                     # 5. CALCULATE TOTALS
                     category_to_total_col = {
@@ -200,7 +216,6 @@ else:
 
                     grand_total = 0
                     for group_name, total_col in category_to_total_col.items():
-                        # We use cleaned_counts here because everything is guaranteed to be a number
                         group_sum = sum(cleaned_counts.get(item, 0) for item in DEBRIS_GROUPS.get(group_name, []))
                         new_row[total_col] = group_sum
                         grand_total += group_sum
@@ -210,34 +225,83 @@ else:
                     grand_total += other_sum
                     new_row["Grand Total"] = grand_total
 
-                    # Save to Master CSV
-                    current_df = load_and_sync_data()
-                    new_df = pd.DataFrame([new_row])
+                    # --- DEBUG SECTION ---
+                    print("--- DEBUGGING CONNECTION ---")
+                    print(f"Spreadsheet URL in secrets: {'Found' if 'spreadsheet' in st.secrets['connections']['gsheets'] else 'MISSING'}")
+                    print(f"Private Key in secrets: {'Found' if 'private_key' in st.secrets['connections']['gsheets'] else 'MISSING'}")
+                    print(f"Service Account Email: {st.secrets['connections']['gsheets'].get('client_email', 'NOT FOUND')}")
+                    # ---------------------
 
-                    updated_df = pd.concat([current_df, new_df], ignore_index=True)
+                    # 6. SAVE TO GOOGLE SHEETS
+# 6. SAVE TO GOOGLE SHEETS (DEEP DEBUG VERSION)
+                    try:
+                        print("\n" + "="*50)
+                        print(" DEBUG: STARTING SAVE PROCESS")
+                        
+                        # 1. Check Secret Keys Presence
+                        gsheets_secrets = st.secrets.get("connections", {}).get("gsheets", {})
+                        print(f"DEBUG: 'gsheets' keys found: {list(gsheets_secrets.keys())}")
+                        
+                        # 2. Check for the 'type' field inside secrets
+                        # If this is missing or wrong, the library defaults to 'Public'
+                        secret_type = gsheets_secrets.get("type")
+                        print(f"DEBUG: Secret 'type' value: {secret_type}")
 
-                    allowed = METADATA_FIELDS + ALL_DEBRIS_ITEMS + SUMMARY_TOTALS + ["Date"]
-                    final_cols = list(dict.fromkeys([c for c in updated_df.columns if c in allowed]))
-                    
-                    updated_df[final_cols].to_csv(DB_FILE, index=False, encoding='utf-8-sig')
-                    st.cache_data.clear()
+                        # 3. Establish connection
+                        conn = st.connection("gsheets", type=GSheetsConnection)
+                        
+                        # 4. Inspect the internal 'client' type
+                        # This is the most important check. It tells us which class is being used.
+                        internal_client = type(conn._instance).__name__
+                        print(f"DEBUG: Internal Client Class: {internal_client}")
+                        
+                        if internal_client == "GSheetsPublicSpreadsheetClient":
+                            print("⚠️ ALERT: Library is still defaulting to PUBLIC mode.")
+                        else:
+                            print("✅ SUCCESS: Library is using SERVICE ACCOUNT mode.")
 
-                    # MANUALLY CLEAR FORM DATA FROM SESSION STATE
-                    # We only do this on SUCCESS
-                    for key in list(st.session_state.keys()):
-                        if key.startswith("meta_") or key.startswith("count_"):
-                            del st.session_state[key]
+                        target_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+                        print(f"DEBUG: Target URL: {target_url[:30]}...")
 
-                    # Success Message
-                    success_area = st.empty()
-                    success_area.success(f"**Success!** Cleanup at **{meta_in['Location']}** has been logged. Navigate to the History section to view.")
-                    st.balloons()
+                        # 5. Attempt Read
+                        print("DEBUG: Attempting to pull current data...")
+                        current_df = conn.read(spreadsheet=target_url, ttl=0)
+                        print(f"DEBUG: Read successful. Current rows: {len(current_df) if current_df is not None else 0}")
 
-                    import time
-                    time.sleep(5)
-                    
-                    st.rerun()
-            
+                        # 6. Prepare and Append
+                        new_df = pd.DataFrame([new_row])
+                        if current_df is not None and not current_df.empty:
+                            updated_df = pd.concat([current_df, new_df], ignore_index=True).copy()
+                        else:
+                            updated_df = new_df
+
+                        # 7. Attempt Update
+                        print("DEBUG: Launching conn.update()...")
+                        allowed = METADATA_FIELDS + ALL_DEBRIS_ITEMS + SUMMARY_TOTALS + ["Date"]
+                        final_cols = [c for c in updated_df.columns if c in allowed]
+                        
+                        conn.update(spreadsheet=target_url, data=updated_df[final_cols])
+                        
+                        print("✅ DEBUG: conn.update() finished without error.")
+                        print("="*50 + "\n")
+
+                        st.cache_data.clear()
+                        st.success("Successfully saved to Master Database!")
+                        st.balloons()
+                        
+                        import time
+                        time.sleep(2)
+                        st.rerun()
+
+                    except Exception as e:
+                        print(f"❌ DEBUG: CRASH DETECTED")
+                        print(f"Error Type: {type(e).__name__}")
+                        print(f"Error Message: {e}")
+                        import traceback
+                        print("Full Traceback:")
+                        traceback.print_exc()
+                        print("="*50 + "\n")
+                        st.error(f"Save Failed: {e}")
 
     # --- SECTION 2: HISTORY ---
     elif page == "History":

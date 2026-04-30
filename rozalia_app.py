@@ -20,8 +20,8 @@ def load_and_sync_data():
     if not os.path.exists(DB_FILE):
         return pd.DataFrame()
     
-    df = pd.read_csv(DB_FILE, low_memory=False)
-    
+    df = pd.read_csv(DB_FILE, low_memory=False, encoding_errors='replace')
+
     # 2. Drop unwanted columns
     cols_to_drop = ['Year', 'Month', 'Day']
     df.drop(columns=[c for c in cols_to_drop if c in df.columns], inplace=True)
@@ -111,30 +111,30 @@ else:
             # 1. METADATA SECTION
             st.subheader("1. CLEANUP DETAILS")
             meta_in = {}
-            m_cols = st.columns(3)
-            REQUIRED_FIELDS = ["Date", "Location", "City", "State"]
+            REQUIRED_FIELDS = ["Date", "Location", "City", "State", "Country"]
 
-            for i, field in enumerate(METADATA_FIELDS):
-                if field == "Outlier": continue
+            fields_to_show = [f for f in METADATA_FIELDS if f != "Outlier"]
+            for i in range(0, len(fields_to_show), 3):
+                row_cols = st.columns(3)
+                for j, field in enumerate(fields_to_show[i:i+3]):
+                    c = row_cols[j]
+                    display_label = field.upper().replace("#", "NUMBER")
+                    if field in REQUIRED_FIELDS:
+                        display_label = f"{display_label} :red[*]"
 
-                c = m_cols[i % 3]
-                display_label = field.upper().replace("#", "NUMBER")
-                if field in REQUIRED_FIELDS:
-                    display_label = f"{display_label} :red[*]"
+                    # Logic: We use 'key' to tie these to session state so they persist
+                    f_key = f"meta_{field}"
 
-                # Logic: We use 'key' to tie these to session state so they persist
-                f_key = f"meta_{field}"
-
-                if field in DROPDOWN_OPTIONS:
-                    meta_in[field] = c.selectbox(display_label, options=DROPDOWN_OPTIONS[field], index=None, key=f_key)
-                elif "Date" in field:
-                    meta_in[field] = c.date_input(display_label, date.today(), key=f_key)
-                elif any(x in field for x in ["Total weight", "Distance", "Duration"]):
-                    meta_in[field] = c.number_input(display_label, min_value=0.0, step=0.1, value=None, placeholder="0.0", key=f_key)
-                elif "Participants" in field or "#" in field:
-                    meta_in[field] = c.number_input(display_label, min_value=0, step=1, value=None, placeholder="0", key=f_key)
-                else:
-                    meta_in[field] = c.text_input(display_label, key=f_key)
+                    if field in DROPDOWN_OPTIONS:
+                        meta_in[field] = c.selectbox(display_label, options=DROPDOWN_OPTIONS[field], index=None, key=f_key)
+                    elif "Date" in field:
+                        meta_in[field] = c.date_input(display_label, date.today(), key=f_key)
+                    elif field in ["Total weight", "Distance cleaned", "Duration (hrs)"]:
+                        meta_in[field] = c.number_input(display_label, min_value=0.0, step=0.1, value=0.0, key=f_key)
+                    elif "Participants" in field or "#" in field:
+                        meta_in[field] = c.number_input(display_label, min_value=0, step=1, value=0, key=f_key)
+                    else:
+                        meta_in[field] = c.text_input(display_label, key=f_key)
 
             st.markdown("---")
             
@@ -147,7 +147,7 @@ else:
                     d_cols = st.columns(3)
                     for j, item in enumerate(items):
                         # Unique key for every debris item to ensure persistence
-                        counts[item] = d_cols[j % 3].number_input(item, min_value=0, step=1, value=None, placeholder="0", key=f"count_{item}")
+                        counts[item] = d_cols[j % 3].number_input(item, min_value=0, step=1, value=0, key=f"count_{item}")
 
             st.markdown("---")
             
@@ -156,7 +156,7 @@ else:
             st.info("**Done entering in your cleanup?**")
             
             submit_col1, submit_col2 = st.columns([1, 3])
-            submitted = submit_col1.form_submit_button("COMMIT TO MASTER LOG")
+            submitted = submit_col1.form_submit_button("SUBMIT DATA")
 
             st.markdown("*Navigate to History to view data*")
 
@@ -170,9 +170,9 @@ else:
                 else:
                     # 2. PREPARE METADATA WITH YOUR SPECIFIC DEFAULTS
                     # Define which fields get what default
-                    to_unknown = ["Type of cleanup", "Type of location", "Weather", "Recent weather", "Tide", "Flow", "Recent events"]
+                    to_unknown = ["Type of cleanup", "Type of location", "Current Weather", "Recent weather", "Tide/Water Level", "Flow Conditions", "Recent events"]
                     to_none = ["Unusual items", "Notes/Comments", "Start time", "End time"]
-                    to_zero = ["Total weight (lb)", "Distance cleaned (miles)", "Duration (hrs)", "# of participants", "Participants"]
+                    to_nodata = ["Total weight", "Distance cleaned", "Duration (hrs)", "# of participants", "Participants"]
 
                     cleaned_meta = {}
                     for field, val in meta_in.items():
@@ -321,57 +321,63 @@ else:
         # We define the grid exactly like your original, but handle City/Location specially
         r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
         r2_c1, r2_c2, r2_c3, r2_c4 = st.columns(4)
+        r3_c1, r3_c2, r3_c3, r3_c4 = st.columns(4)
         
         # ROW 1: Geography & Time
         # State
-        state_opts = sorted(f_df["State"].unique().astype(str))
+        state_opts = sorted(f_df["State"].dropna().unique().astype(str))
         sel_states = r1_c1.multiselect("SELECT STATE", options=state_opts)
         if sel_states:
             f_df = f_df[f_df["State"].isin(sel_states)]
 
         # City (The Parent)
-        city_opts = sorted(f_df["City"].unique().astype(str))
+        city_opts = sorted(f_df["City"].dropna().unique().astype(str))
         sel_cities = r1_c2.multiselect("SELECT CITY", options=city_opts)
         if sel_cities:
             f_df = f_df[f_df["City"].isin(sel_cities)]
 
         # Location (The Child - filtered by City)
-        loc_opts = sorted(f_df["Location"].unique().astype(str))
+        loc_opts = sorted(f_df["Location"].dropna().unique().astype(str))
         sel_locs = r1_c3.multiselect("SELECT LOCATION", options=loc_opts)
         if sel_locs:
             f_df = f_df[f_df["Location"].isin(sel_locs)]
 
         # Year
-        year_opts = sorted(f_df["Year"].unique())
+        year_opts = sorted(f_df["Year"].dropna().unique())
         sel_years = r1_c4.multiselect("SELECT YEAR", options=year_opts)
         if sel_years:
             f_df = f_df[f_df["Year"].isin(sel_years)]
 
         # ROW 2: Cleanup Details & Weather
         # Month
-        month_opts = sorted(f_df["Month"].unique())
+        month_opts = sorted(f_df["Month"].dropna().unique())
         sel_months = r2_c1.multiselect("SELECT MONTH", options=month_opts)
         if sel_months:
             f_df = f_df[f_df["Month"].isin(sel_months)]
 
         # Type of cleanup
-        cleanup_opts = sorted(f_df["Type of cleanup"].unique().astype(str))
+        cleanup_opts = sorted(f_df["Type of cleanup"].dropna().unique().astype(str))
         sel_cleanup = r2_c2.multiselect("SELECT TYPE OF CLEANUP", options=cleanup_opts)
         if sel_cleanup:
             f_df = f_df[f_df["Type of cleanup"].isin(sel_cleanup)]
 
         # Type of location
-        type_loc_opts = sorted(f_df["Type of location"].unique().astype(str))
+        type_loc_opts = sorted(f_df["Type of location"].dropna().unique().astype(str))
         sel_type_loc = r2_c3.multiselect("SELECT TYPE OF LOCATION", options=type_loc_opts)
         if sel_type_loc:
             f_df = f_df[f_df["Type of location"].isin(sel_type_loc)]
 
         # Weather
-        weather_opts = sorted(f_df["Weather"].unique().astype(str))
+        weather_opts = sorted(f_df["Current Weather"].dropna().unique().astype(str))
         sel_weather = r2_c4.multiselect("SELECT WEATHER", options=weather_opts)
         if sel_weather:
-            f_df = f_df[f_df["Weather"].isin(sel_weather)]
+            f_df = f_df[f_df["Current Weather"].isin(sel_weather)]
 
+        # Organization
+        org_opts = sorted(f_df["Organization/Individual"].dropna().unique().astype(str))
+        sel_orgs = r3_c1.multiselect("SELECT ORGANIZATION/INDIVIDUAL", options=org_opts)
+        if sel_orgs:
+            f_df = f_df[f_df["Organization/Individual"].isin(sel_orgs)]
 
         # --- STEP 2: VIEW DIMENSIONS ---
         st.markdown("**STEP 2: GROUP DATA BY**")

@@ -1,26 +1,14 @@
-name: Wake Streamlit App
+name: Keep Streamlit App Awake
 
 on:
   schedule:
-    - cron: "0 */4 * * *"   # every 4 hours
-  workflow_dispatch:         # allow manual trigger
+    - cron: '0 */4 * * *' # Runs every 6 hours
+  workflow_dispatch: # Allows you to press a button and test it manually
 
 jobs:
-  wake:
+  ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Install dependencies
+      - name: Send a ping request to the app
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run Selenium script
-        run: python main.py
+          curl -I https://rozalia-dash.streamlit.app

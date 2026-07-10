@@ -132,7 +132,7 @@ else:
             # 1. METADATA SECTION
             st.subheader("1. CLEANUP DETAILS")
             meta_in = {}
-            REQUIRED_FIELDS = ["Date", "Location", "City", "State", "Country"]
+            REQUIRED_FIELDS = ["Date", "Location", "City", "State", "Country", "Name of Organization/Individual", "Email"]
 
             fields_to_show = [f for f in METADATA_FIELDS if f != "Outlier"]
             for i in range(0, len(fields_to_show), 3):

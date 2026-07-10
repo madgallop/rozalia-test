@@ -12,7 +12,7 @@ from config import DEBRIS_GROUPS, METADATA_FIELDS, SUMMARY_TOTALS, DROPDOWN_OPTI
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- SYSTEM CONFIGURATION ---
-DB_FILE = "master_data.csv"
+# DB_FILE = "master_data.csv"
 ROZALIA_PALETTE = ["#7BB3CC", "#E8A85D", "#92AD94", "#A4C3B2", "#BC6C25", "#8D99AE", "#D4A373", "#788794", "#E9EDC9"]
 ALL_DEBRIS_ITEMS = [item for sublist in DEBRIS_GROUPS.values() for item in sublist]
 
@@ -177,12 +177,12 @@ else:
                     new_row["Total Paper/Cloth Items"] = sum(cleaned_counts.get(i, 0) for i in DEBRIS_GROUPS["Paper & Cloth"])
                     new_row["Total Fishing Debris Items"] = sum(cleaned_counts.get(i, 0) for i in DEBRIS_GROUPS["Fishing Debris"])
                     
-                    # Direct granular references to Microplastics items from the blueprint schema
+                    # Granular microplastic calculations
                     new_row["Total Plastic Fragments (> 30mm)"] = cleaned_counts.get("LARGE plastic >30mm", 0)
                     new_row["Total Plastic Fragments (5-30mm)"] = cleaned_counts.get("SMALL plastic 5-30mm", 0)
                     new_row["Total Microplastics (0-5mm)"] = cleaned_counts.get("Micro plastic 0-5mm", 0)
                     
-                    # Miscellaneous and final cumulative math
+                    # Miscellaneous and Grand Cumulative Math
                     new_row["Total Misc"] = sum(cleaned_counts.get(i, 0) for i in DEBRIS_GROUPS["Miscellaneous"])
                     new_row["Total (All)"] = sum(cleaned_counts.values())
 

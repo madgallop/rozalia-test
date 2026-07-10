@@ -431,17 +431,17 @@ else:
         if sel_type_loc:
             f_df = f_df[f_df["Type of location"].isin(sel_type_loc)]
 
-        # Weather
-        weather_opts = sorted(f_df["Current Weather"].dropna().unique().astype(str))
-        sel_weather = r2_c4.multiselect("SELECT WEATHER", options=weather_opts)
-        if sel_weather:
-            f_df = f_df[f_df["Current Weather"].isin(sel_weather)]
+        # # Weather
+        # weather_opts = sorted(f_df["Current Weather"].dropna().unique().astype(str))
+        # sel_weather = r2_c4.multiselect("SELECT WEATHER", options=weather_opts)
+        # if sel_weather:
+        #     f_df = f_df[f_df["Current Weather"].isin(sel_weather)]
 
         # Organization
-        org_opts = sorted(f_df["Organization/Individual"].dropna().unique().astype(str))
+        org_opts = sorted(f_df["Name of Organization/Individual"].dropna().unique().astype(str))
         sel_orgs = r3_c1.multiselect("SELECT ORGANIZATION/INDIVIDUAL", options=org_opts)
         if sel_orgs:
-            f_df = f_df[f_df["Organization/Individual"].isin(sel_orgs)]
+            f_df = f_df[f_df["Name of Organization/Individual"].isin(sel_orgs)]
 
         # --- STEP 2: VIEW DIMENSIONS ---
         st.markdown("**STEP 2: GROUP DATA BY**")
@@ -551,13 +551,19 @@ else:
                             hovertemplate="<b>%{label}</b><br>Count: %{value:,} pieces<br>%{percent}<extra></extra>"
                         )
                     else:
-                        fig_sub = px.bar(sub_df, x='X_Axis', y='Count', color='Item',
-                                         template="simple_white", color_discrete_sequence=ROZALIA_PALETTE,
-                                         category_orders={"X_Axis": sorted(sub_df['X_Axis'].unique())})
+                        fig_sub = px.bar(
+                            sub_df, 
+                            x='X_Axis', 
+                            y='Count', 
+                            color='Item',
+                            template="simple_white", 
+                            color_discrete_sequence=ROZALIA_PALETTE,
+                            category_orders={"X_Axis": sorted(sub_df['X_Axis'].unique())},
+                            custom_data=['Count'] # Realigned here
+                        )
                         fig_sub.update_layout(barnorm='percent', yaxis_title="PROPORTION (%)")
                         fig_sub.update_traces(
-                            hovertemplate="<b>%{fullData.name}</b><br>Count: %{customdata[0]:,} pieces<br>Share: %{y:.1f}%<extra></extra>",
-                            customdata=sub_df[['Count']] 
+                            hovertemplate="<b>%{fullData.name}</b><br>Count: %{customdata[0]:,} pieces<br>Share: %{y:.1f}%<extra></extra>"
                         )
                     
                     fig_sub.update_layout(xaxis_title=None, font_family="Avenir")

@@ -184,7 +184,11 @@ else:
                     
                     # Miscellaneous and Grand Cumulative Math
                     new_row["Total Misc"] = sum(cleaned_counts.get(i, 0) for i in DEBRIS_GROUPS["Miscellaneous"])
-                    new_row["Total (All)"] = sum(cleaned_counts.values())
+                    new_row["Total (All)"] = sum(
+                        cleaned_counts.get(item, 0) 
+                        for group in DEBRIS_GROUPS.values() 
+                        for item in group
+                    )
 
                     try:
                         conn = st.connection("gsheets", type=GSheetsConnection)
